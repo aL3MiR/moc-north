@@ -524,7 +524,7 @@ function renderHeader(){
       <div><span class="lb">مديرة إدارة المراكز الصحية بالقطاع الشمالي:</span><b>${esc(cfg.director)}</b></div>
       <div><span class="lb">مديرة المركز:</span><b>${esc(c?.manager || "—")}</b></div>
       <div><span class="lb">ترتيب المركز في القطاع:</span><b class="num">${sm?.rank ? `${sm.rank} / ${sm.of}` : "—"}</b></div>
-      <div class="term">الرقم الوزاري للمركز <span class="num">${esc(cfg.salama.ministry)}</span></div>`;
+      <div class="term"><span class="lb">الرقم الوزاري للمركز:</span><b class="num">${esc(cfg.salama.ministry)}</b></div>`;
   } else {
     const active = centers().length;
     $("strip").innerHTML = `
@@ -532,7 +532,7 @@ function renderHeader(){
       <button type="button" class="stripbtn" id="open-centers"><span class="lb">عدد المراكز</span><b class="num">${active}</b><span class="lb">عرض المراكز ←</span></button>
       <div class="term"><span class="lb">المسارات الوطنية</span><b class="num">٦</b></div>`;
   }
-  $("strip").classList.toggle("big", MODE === "sector");
+  $("strip").classList.add("big");
   $("open-centers")?.addEventListener("click", openCenters);
   const r = cfg.reminder;
   $("remind").innerHTML = r?.active ? `<div class="remind" role="note"><h3>🚩 ${esc(r.title)}</h3><ul>${(r.lines||[]).map(l => `<li class="${/عدم/.test(l)?"stop":""}">${esc(l)}</li>`).join("")}</ul></div>` : "";
