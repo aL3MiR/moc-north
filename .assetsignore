@@ -6,3 +6,4 @@ wrangler.jsonc
 .assetsignore
 README.md
 moc-setup.sql
+moc-records.sql

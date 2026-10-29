@@ -11,6 +11,8 @@ function meta(){return claims().app_metadata||{}}
 function owner(){return meta().role==='owner'}
 function mgr(){var m=meta();return m.role==='moc_manager'&&/^c\d\d$/.test(m.center||'')}
 function cen(){return mgr()?meta().center:''}
+function aud(){return meta().role==='moc_auditor'}
+function role(){return owner()?'owner':aud()?'moc_auditor':mgr()?'moc_manager':''}
 function save(){try{if(sess)localStorage.setItem(SK,JSON.stringify(sess));else localStorage.removeItem(SK)}catch(e){}}
 async function refresh(){if(!sess||!sess.refresh_token)return;try{var r=await fetch(URL_+'/auth/v1/token?grant_type=refresh_token',{method:'POST',headers:{apikey:KEY,'Content-Type':'application/json'},body:JSON.stringify({refresh_token:sess.refresh_token})});sess=r.ok?await r.json():null;save()}catch(e){}}
 async function ensure(){if(sess&&sess.access_token&&jwt(sess.access_token).exp*1000<Date.now()+60000)await refresh()}
@@ -36,21 +38,30 @@ var DB={
   onSnapshot:function(ok,err){return poll(async function(){var rows=await api(tbl(name)+'?select=id,data&order=id');return {raw:rows,snap:{docs:rows.map(function(r){return {id:r.id,data:function(){return r.data}}})}}},ok,err)}}}
 };
 var DL={save:async function(o){var b=o.data instanceof Blob?o.data:new Blob([o.data]);var u=URL.createObjectURL(b),a=document.createElement('a');a.href=u;a.download=o.filename;document.body.appendChild(a);a.click();setTimeout(function(){a.remove();URL.revokeObjectURL(u)},4000);return {status:'saved'}}};
-var USER={id:async function(){return claims().sub||null},can:async function(n){return n==='data.write'?(owner()||mgr()):false},canEdit:async function(){return owner()},isOwner:async function(){return owner()},center:async function(){return cen()||null}};
+var USER={role:async function(){return role()},id:async function(){return claims().sub||null},can:async function(n){return n==='data.write'?(owner()||mgr()):false},canEdit:async function(){return owner()},isOwner:async function(){return owner()},center:async function(){return cen()||null}};
+var q=encodeURIComponent;
+window.MOCREC={
+ role:role, center:cen,
+ onCounts:function(ok,err){return poll(async function(){var rows=await api('moc_counts?select=center,pathway,day,n,matched,unmatched,pending,complete');return {raw:rows,snap:rows}},ok,err)},
+ list:async function(o){var p='moc_records?select=*&pathway=eq.'+q(o.pathway);if(o.center)p+='&center=eq.'+q(o.center);if(o.day)p+='&day=eq.'+q(o.day);if(o.from)p+='&day=gte.'+q(o.from);p+='&order=day.desc,created_at.asc&limit='+(o.limit||5000);return await api(p)},
+ add:async function(rows){var r=await api('moc_records',{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify(rows)});kick();return r},
+ update:async function(id,patch){var r=await api('moc_records?id=eq.'+q(id),{method:'PATCH',headers:{Prefer:'return=representation'},body:JSON.stringify(patch)});if(!r||!r.length){var e=new Error('denied');e.code=403;throw e}kick();return r[0]},
+ remove:async function(id){var r=await api('moc_records?id=eq.'+q(id),{method:'DELETE',headers:{Prefer:'return=representation'}});if(!r||!r.length){var e=new Error('denied');e.code=403;throw e}kick()}
+};
 window.claude={use:async function(n){if(n==='db')return DB;if(n==='user')return USER;if(n==='downloads')return DL;return null}};
 var nameOf=function(id){for(var i=0;i<CN.length;i++)if(CN[i][0]===id)return CN[i][1];return id};
 window.MOCSB={logout:function(){sess=null;save();location.reload()},
- login:async function(email,pw){var r=await fetch(URL_+'/auth/v1/token?grant_type=password',{method:'POST',headers:{apikey:KEY,'Content-Type':'application/json'},body:JSON.stringify({email:email,password:pw})});if(!r.ok)throw new Error('bad');sess=await r.json();if(!owner()&&!mgr()){sess=null;throw new Error('notallowed')}save();location.reload()}};
+ login:async function(email,pw){var r=await fetch(URL_+'/auth/v1/token?grant_type=password',{method:'POST',headers:{apikey:KEY,'Content-Type':'application/json'},body:JSON.stringify({email:email,password:pw})});if(!r.ok)throw new Error('bad');sess=await r.json();if(!owner()&&!mgr()&&!aud()){sess=null;throw new Error('notallowed')}save();location.reload()}};
 function ui(){var b=document.createElement('button');b.type='button';
- b.textContent=owner()?'خروج المشرف':mgr()?'خروج — مركز '+nameOf(cen()):'تسجيل الدخول';
+ b.textContent=owner()?'خروج المشرف':aud()?'خروج فريق التدقيق':mgr()?'خروج — مركز '+nameOf(cen()):'تسجيل الدخول';
  b.style.cssText='position:fixed;bottom:calc(10px + env(safe-area-inset-bottom,0px));left:10px;z-index:99;font-family:inherit;font-size:13px;padding:6px 13px;border-radius:16px;border:1px solid #9aa8b5;background:rgba(255,255,255,.92);color:#0F2C46;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.15)';
- b.onclick=function(){if(owner()||mgr()){MOCSB.logout();return}
+ b.onclick=function(){if(owner()||mgr()||aud()){MOCSB.logout();return}
   var o=document.createElement('div');o.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:200;display:flex;align-items:center;justify-content:center;direction:rtl;font-family:inherit';
   var st='padding:9px;border:1px solid #8a97a6;border-radius:8px;font:inherit;font-size:16px;background:#fff;color:#17212B;-webkit-text-fill-color:#17212B;color-scheme:light';
-  o.innerHTML='<form style="background:#fff;color:#17212B;padding:22px;border-radius:12px;width:min(340px,90vw);display:grid;gap:10px"><b style="font-size:17px">تسجيل الدخول</b><select name=c style="'+st+'"><option value="">اختر مركزك…</option>'+CN.map(function(c){return '<option value="'+c[0]+'">مركز '+c[1]+'</option>'}).join('')+'<option value="sup">مشرف القطاع</option></select><input name=e type=email hidden placeholder="البريد الإلكتروني" autocapitalize=off autocomplete=email style="'+st+';direction:ltr"><input name=p type=password placeholder="كلمة المرور" autocomplete=current-password required style="'+st+';direction:ltr"><div class=m style="color:#B5352A;font-size:13px;min-height:16px"></div><div style="display:flex;gap:8px"><button style="flex:1;padding:9px;border:0;border-radius:8px;background:#0F2C46;color:#fff;font:inherit">دخول</button><button type=button class=x style="padding:9px 14px;border:1px solid #ccd;border-radius:8px;background:#fff;color:#17212B;font:inherit">إلغاء</button></div></form>';
+  o.innerHTML='<form style="background:#fff;color:#17212B;padding:22px;border-radius:12px;width:min(340px,90vw);display:grid;gap:10px"><b style="font-size:17px">تسجيل الدخول</b><select name=c style="'+st+'"><option value="">اختر مركزك…</option>'+CN.map(function(c){return '<option value="'+c[0]+'">مركز '+c[1]+'</option>'}).join('')+'<option value="a1">فريق التدقيق 1</option><option value="a2">فريق التدقيق 2</option><option value="a3">فريق التدقيق 3</option><option value="sup">مشرف القطاع</option></select><input name=e type=email hidden placeholder="البريد الإلكتروني" autocapitalize=off autocomplete=email style="'+st+';direction:ltr"><input name=p type=password placeholder="كلمة المرور" autocomplete=current-password required style="'+st+';direction:ltr"><div class=m style="color:#B5352A;font-size:13px;min-height:16px"></div><div style="display:flex;gap:8px"><button style="flex:1;padding:9px;border:0;border-radius:8px;background:#0F2C46;color:#fff;font:inherit">دخول</button><button type=button class=x style="padding:9px 14px;border:1px solid #ccd;border-radius:8px;background:#fff;color:#17212B;font:inherit">إلغاء</button></div></form>';
   document.body.appendChild(o);var f=o.firstChild;f.c.onchange=function(){f.e.hidden=f.c.value!=='sup';f.e.required=f.c.value==='sup'};f.querySelector('.x').onclick=function(){o.remove()};
   f.onsubmit=async function(ev){ev.preventDefault();var m=f.querySelector('.m');if(!f.c.value){m.textContent='اختر مركزك أو «مشرف القطاع».';return}m.textContent='جارٍ الدخول…';
-   try{await MOCSB.login(f.c.value==='sup'?f.e.value.trim():'moc-'+f.c.value+'@sh-north.example',f.p.value)}catch(x){m.textContent=x.message==='notallowed'?'هذا الحساب غير مخوّل لهذه المنصة.':'بيانات الدخول غير صحيحة.'}}};
+   try{var v=f.c.value;await MOCSB.login(v==='sup'?f.e.value.trim():/^a\d$/.test(v)?'moc-audit'+v.slice(1)+'@sh-north.example':'moc-'+v+'@sh-north.example',f.p.value)}catch(x){m.textContent=x.message==='notallowed'?'هذا الحساب غير مخوّل لهذه المنصة.':'بيانات الدخول غير صحيحة.'}}};
  document.body.appendChild(b)}
 if(document.body)ui();else document.addEventListener('DOMContentLoaded',ui);
 })();
@@ -135,13 +146,30 @@ h2{font-family:var(--f-display);font-size:24px;color:var(--navy);margin:28px 0 1
 .strip.big b,.strip.big .stripbtn b{font-size:21px}
 .strip.big .lb,.strip.big .stripbtn .lb{font-size:15px}
 .pwtile span{font-size:13px;color:var(--th);font-weight:700}
+#pwpage{z-index:31}
 .pwpage{position:fixed;inset:0;z-index:30;background:var(--bg);overflow-y:auto;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
 .pwp-bar{position:sticky;top:0;background:var(--bg);padding-block:10px;z-index:2;max-width:900px;margin:0 auto}
 .pwp-in{max-width:900px;margin:0 auto;padding-bottom:30px;display:grid;gap:12px}
 .pwp-age{background:var(--strip);color:var(--strip-ink);border-radius:8px;padding:8px 14px;font-size:15px}
 .pwp-sec{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 16px}
 .pwp-sec h3{margin:0 0 6px;font-family:var(--f-display);font-size:20px;color:var(--navy);border-bottom:2px solid var(--gold);display:inline-block;padding-bottom:2px}
-.pwp-sec p{margin:0}.pwp-sec ul{margin:0;padding-inline-start:20px;display:grid;gap:3px}
+.pwp-sec p{margin:0}
+.recform{display:grid;gap:8px;max-width:620px;margin-top:6px}
+.recform textarea{width:100%;min-height:110px;border:1.5px solid var(--line);border-radius:10px;padding:8px 12px;background:var(--bg);color:var(--ink);font-family:ui-monospace,Menlo,monospace;font-size:15px;direction:ltr;text-align:left}
+.recgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px}
+.recgrid .in{width:100%}
+.recnote{font-size:13px;color:var(--muted)}
+.rsum{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
+.rsum span{background:var(--soft);border-radius:999px;padding:2px 12px;font-size:13.5px;font-weight:700;color:var(--navy)}
+td.nid{font-family:ui-monospace,Menlo,monospace;direction:ltr;unicode-bidi:isolate}
+.yn{min-height:32px;border:1.5px solid var(--line);border-radius:8px;padding:2px 6px;background:var(--surface);font:inherit;font-size:13px}
+.yn.y{border-color:var(--ok);color:var(--ok)}.yn.n{border-color:var(--bad);color:var(--bad)}
+.audsel{min-height:34px;border:1.5px solid var(--line);border-radius:8px;padding:2px 6px;background:var(--surface);font:inherit;font-size:13px;max-width:230px}
+.audsel.match{border-color:var(--ok);color:var(--ok);background:var(--ok-bg)}.audsel.bad{border-color:var(--bad);color:var(--bad);background:var(--bad-bg)}
+.btn.del{background:transparent;color:var(--bad);border-color:var(--bad);min-height:30px;padding:2px 10px;font-size:12.5px}
+.pwcell{display:grid;gap:6px;align-content:start;min-width:0}
+.recbox{border:1.5px dashed var(--line);border-radius:12px;padding:10px 12px;background:var(--bg);display:grid;gap:6px}
+.recbox b{font-family:var(--f-display);font-size:17px;color:var(--navy)}.pwp-sec ul{margin:0;padding-inline-start:20px;display:grid;gap:3px}
 .muted{color:var(--muted)}
 .pw{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px 16px;display:grid;gap:8px;align-content:start;min-width:0;box-shadow:var(--shadow)}
 .pw-h{display:flex;justify-content:space-between;gap:8px;align-items:baseline;flex-wrap:wrap}
@@ -345,20 +373,24 @@ const PW = [
    crit:["يستهدف الأفراد غير المشخّصين مسبقًا بالسكري","ممن لم يُجروا فحص السكر خلال آخر سنة"],
    aim:"الكشف المبكر عن المرض وإحالة الحالات الإيجابية للتشخيص والمتابعة.",
    forms:[0],
-   fields:[["a","عدد المفحوصين (المحقق)"],["c","عدد التواصل"],["m","المطابقون للشروط والمعايير"]] },
+   rec:true, extra:"يُضاف كل مفحوص بسجله المدني، ولا يُحتسب في المؤشر إلا بعد تدقيقه من فريق القطاع واعتماده «مطابق».",
+   fields:[["a","عدد المفحوصين (المحقق)"]] },
  { k:"lip", name:"اعتلال الدهون", full:"مسار الكشف المبكر عن اعتلال الدهون", age:"الرجال ٣٥+ · النساء ٤٥+",
    crit:["الرجال من ٣٥ سنة فأكثر، والنساء من ٤٥ سنة فأكثر","يستهدف الأفراد غير المشخّصين مسبقًا","ممن لم يُجروا فحص اعتلال دهون خلال آخر سنة"],
    aim:"اكتشاف ارتفاع الكوليسترول والدهون الثلاثية للوقاية من أمراض القلب والجلطات، للفئة المستهدفة وإحالة النتائج غير الطبيعية للطبيب.",
    forms:[0],
-   fields:[["a","عدد المفحوصين (المحقق)"],["c","عدد التواصل"],["m","المطابقون للشروط والمعايير"]] },
+   rec:true, extra:"يُضاف كل مفحوص بسجله المدني، ولا يُحتسب في المؤشر إلا بعد تدقيقه من فريق القطاع واعتماده «مطابق».",
+   fields:[["a","عدد المفحوصين (المحقق)"]] },
  { k:"ob", name:"السمنة", full:"مسار الكشف المبكر عن السمنة", age:"١٨ سنة فأكثر",
    crit:["يستهدف الأفراد غير المشخّصين بالسمنة مسبقًا","ممن لم يُجروا فحص السمنة خلال آخر سنة"],
    aim:"اكتشاف زيادة الوزن والسمنة عبر قياس مؤشر كتلة الجسم، وتقديم الإرشاد الغذائي والبدني، وإحالة الحالات عند الحاجة.",
-   fields:[["a","عدد المفحوصين (المحقق)"],["c","عدد التواصل"],["m","المطابقون للشروط والمعايير"]] },
+   rec:true, extra:"يُضاف كل مفحوص بسجله المدني، ولا يُحتسب في المؤشر إلا بعد تدقيقه من فريق القطاع واعتماده «مطابق».",
+   fields:[["a","عدد المفحوصين (المحقق)"]] },
  { k:"bp", name:"الضغط", full:"مسار الكشف المبكر عن ارتفاع ضغط الدم", age:"١٨ سنة فأكثر",
    crit:["يستهدف الأفراد غير المشخّصين مسبقًا","ممن لم يُجروا فحص الضغط خلال آخر سنة"],
    aim:"قياس ضغط الدم واكتشاف الحالات المرتفعة وإحالتها للتشخيص والمتابعة.",
-   fields:[["a","عدد المفحوصين (المحقق)"],["c","عدد التواصل"],["m","المطابقون للشروط والمعايير"]] },
+   rec:true, extra:"يُضاف كل مفحوص بسجله المدني، ولا يُحتسب في المؤشر إلا بعد تدقيقه من فريق القطاع واعتماده «مطابق».",
+   fields:[["a","عدد المفحوصين (المحقق)"]] },
  { k:"col", name:"صحة القولون (FIT)", full:"مسار الكشف المبكر عن سرطان القولون والمستقيم", age:"من ٤٥ إلى ٧٥ سنة",
    crit:["من عمر ٤٥ إلى ٧٥ سنة","غير مشخّص مسبقاً"],
    aim:"اكتشاف سرطان القولون والمستقيم والزوائد السابقة له في مرحلة مبكرة قابلة للعلاج. توضح وزارة الصحة أن أغلب الحالات تظهر بعد عمر ٤٥ سنة، وأن الخدمة متاحة في مراكز الرعاية الأولية للفئة من ٤٥ إلى ٧٥ سنة.",
@@ -370,14 +402,14 @@ const PW = [
     {t:"عوامل خطورة عالية — يكفي عامل واحد لتحويل المستفيد لمنظار القولون مباشرة", items:["تاريخ عائلي لسرطان القولون والمستقيم أو اللحميات (السليلات Polyps)","تاريخ مرضي بالإصابة باللحميات في القولون أو المستقيم","تاريخ مرضي بالتهابات القولون التقرحي أو مرض كرون","تعرض سابق للإشعاع في منطقة البطن أو الحوض لعلاج سرطان سابق"]}
    ],
    forms:[0,1,2],
-   fields:[["a","طلبات التحاليل"],["r","النتائج المكتملة"],["c","عدد التواصل"],["m","المطابقون للشروط والمعايير"]] },
+   fields:[["a","طلبات التحاليل"],["r","النتائج المكتملة"]] },
  { k:"br", name:"صحة الثدي", full:"مسار الكشف المبكر عن سرطان الثدي (الماموجرام)", age:"من ٤٠ إلى ٦٩ سنة",
    crit:["غير مرضع","غير حامل","لم تُجرِ الماموجرام خلال آخر سنة","غير مشخّصة مسبقاً"],
    aim:"اكتشاف التغيرات غير الطبيعية في الثدي قبل ظهور الأعراض. تذكر وزارة الصحة أن الكشف المبكر يرفع نسبة الشفاء لأكثر من ٩٥٪ ويقلل الوفيات.",
    how:"التحويل للماموجرام على نظام موعد، ثم إضافة البيانات لمنصة المسار، وإدخال الأوردر في رقيم، مع التركيز على جودة الإحالة. لا تُحوَّل السيدة في حالة الرفض أو دون علمها، ويُستخدم التحويل الورقي عند تعطل النظام.",
-   extra:"المستهدف شهري (عدد السيدات المفحوصات فعلياً). النسبة = المفحوصات فعلياً هذا الشهر ÷ المستهدف الشهري.",
-   monthly:true,
-   fields:[["a","التحويلات على موعد"],["e","المفحوصات فعلياً"],["c","عدد التواصل"],["m","المطابقات للشروط والمعايير"]] }
+   extra:"المستهدف شهري. يُضاف كل تحويل بسجله المدني ورقم الجوال، ويُحتسب «مكتملاً» إذا تم التحويل على نظام موعد، وإضافة البيانات لمنصة المسار، وإدخال الأوردر في رقيم. النسبة = التحويلات المكتملة هذا الشهر ÷ المستهدف الشهري.",
+   monthly:true, mammo:true,
+   fields:[["c","عدد التواصل"]] }
 ];
 const PWK = Object.fromEntries(PW.map(p => [p.k, p]));
 const FORMS = [
@@ -398,6 +430,7 @@ async function downloadForm(i){
 }
 document.addEventListener("click", e => {
   const d = e.target.closest("[data-dl]"); if (d) { downloadForm(+d.dataset.dl); return; }
+  const r = e.target.closest("[data-open-rec]"); if (r) { S.pe.center = S.eCenter; S.pe.date = S.eDate; openPw(r.dataset.openRec); return; }
   const b = e.target.closest("[data-pw]"); if (b) openPw(b.dataset.pw);
 });
 
@@ -418,8 +451,8 @@ function openPw(k){
     <div class="pwp-sec"><h3>${p.how ? "شروط الاحتساب ضمن المستهدف" : "الفئات المستهدفة"}</h3><ul>${p.crit.map(c => `<li>${c}</li>`).join("")}</ul></div>
     ${(p.blocks||[]).map(b => `<div class="pwp-sec"><h3>${b.t}</h3><ul>${b.items.map(i => `<li>${i}</li>`).join("")}</ul></div>`).join("")}
     ${p.extra ? `<div class="pwp-sec"><h3>المؤشرات</h3><p>${p.extra}</p></div>` : ""}
-    <div class="pwp-sec" id="pwp-map"></div>
-    <div class="pwp-sec" id="pwp-entry"></div>
+    ${S.myCenter ? `<div class="pwp-sec" id="pwp-entry"></div><div class="pwp-sec" id="pwp-map"></div>` : `<div class="pwp-sec" id="pwp-map"></div><div class="pwp-sec" id="pwp-entry"></div>`}
+    <div class="pwp-sec" id="pwp-audit" hidden></div>
     <div class="pwp-sec"><h3>النماذج</h3>${forms ? `<div class="forms-grid">${forms}</div>` : `<p class="muted">لا توجد نماذج مرفقة لهذا المسار حالياً.</p>`}</div>`;
   S.openPw = k; S.pe.dirty = false;
   refreshPw(true);
@@ -439,8 +472,25 @@ S.view = store.get("moc.view") === "cm" ? "cm" : "ach";
 S.cp.view = store.get("moc.cpv") === "table" ? "table" : "tiles";
 
 const EXT = !!window.MOC_EXTERNAL;
+const REC = !!window.MOCREC;
+S.cnt = {}; S.cntDays = new Set(); S.cntDay = new Map(); S.role = ""; S.rl = { key:"", rows:null, loading:false }; S.al = { k:"", rows:null, loading:false }; S.af = { center:"", status:"pending" };
+const AUD = { match:"مطابق", age:"غير مطابق للفئة العمرية", diag:"غير مطابق — مشخّص مسبقاً", recent:"غير مطابق — عمل فحصاً في أقل من سنة" };
+const canRead = cid => S.role === "owner" || S.role === "moc_auditor" || (S.role === "moc_manager" && S.myCenter === cid);
+const isAuditor = () => S.role === "owner" || S.role === "moc_auditor";
+function setCounts(rows){
+  const cnt = {}, days = new Set(), byDay = new Map();
+  for (const r of rows || []){
+    const o = ((cnt[r.center] ||= {})[r.pathway] ||= { n:0, matched:0, unmatched:0, pending:0, complete:0, monthN:0, monthComplete:0 });
+    o.n += r.n; o.matched += r.matched; o.unmatched += r.unmatched; o.pending += r.pending; o.complete += r.complete;
+    if (String(r.day).slice(0,7) === TODAY.slice(0,7)) { o.monthN += r.n; o.monthComplete += r.complete; }
+    days.add(r.center + "|" + r.day); byDay.set(r.center + "|" + r.pathway + "|" + r.day, r);
+  }
+  S.cnt = cnt; S.cntDays = days; S.cntDay = byDay;
+}
+const reportedOn = (cid, ds) => !!dayRec(cid, ds) || S.cntDays.has(cid + "|" + ds);
+const fieldsOf = p => REC && p.rec ? [] : p.fields;
 const canW = cid => S.canWrite && (!S.myCenter || S.myCenter === cid);
-const NOWRITE = () => !S.canWrite ? (EXT ? "سجّل الدخول بحساب مركزك لرصد المنجز." : "صلاحيتك للعرض فقط. اطلب صلاحية «مساهم» لإدخال المنجز.") : "يمكنك رصد منجز مركزك فقط.";
+const NOWRITE = () => S.role === "moc_auditor" ? "حساب فريق التدقيق يعرض السجلات ويدققها، ولا يرصد المنجز." : !S.canWrite ? (EXT ? "سجّل الدخول بحساب مركزك لرصد المنجز." : "صلاحيتك للعرض فقط. اطلب صلاحية «مساهم» لإدخال المنجز.") : "يمكنك رصد منجز مركزك فقط.";
 const DENIED = err => err?.code === "invalid_argument" || err?.code === 401 || err?.code === 403;
 const SYNC_NOTE = EXT ? "البيانات مشتركة مع منصة القطاع الشمالي ومحدّثة باستمرار." : "متوسط القطاع وترتيب المركز يُحدَّثان تلقائياً من منصة القطاع الشمالي عدة مرات يومياً.";
 function computeSummary(){
@@ -471,10 +521,11 @@ function sumEntries(cid){
         const r = rec[p.k]; if (!r) continue;
         const o = (out[p.k] ||= {a:0,r:0,e:0,c:0,m:0});
         o.a += +r.a || 0; o.r += +r.r || 0; o.e += +r.e || 0; o.c += +r.c || 0; o.m += +r.m || 0;
-        if (`${doc.year}-${pad(doc.month)}` === CUR){ const q = (mon[p.k] ||= {a:0,e:0}); q.a += +r.a || 0; q.e += +r.e || 0; }
+        if (`${doc.year}-${pad(doc.month)}` === CUR){ const q = (mon[p.k] ||= {a:0,e:0,c:0}); q.a += +r.a || 0; q.e += +r.e || 0; q.c += +r.c || 0; }
       }
     }
   }
+  for (const key of S.cntDays) { const [cc, dd] = key.split("|"); if (cc === cid) days.add(dd); }
   return { sums: out, mon, days };
 }
 function evalCenter(c){
@@ -483,14 +534,17 @@ function evalCenter(c){
   const res = { c, days, pw:{} };
   for (const p of PW){
     const on = isOn(c, p.k), t = tgt(c.id, p.k), e = sums[p.k] || {a:0,r:0,c:0,m:0};
-    let ach, done = null;
+    let ach, done = null, contact = e.c || 0, matched = 0, unmatched = 0, pending = 0, matchRate = e.a ? e.m / e.a : null;
+    const k = S.cnt[c.id]?.[p.k] || {};
     if (p.k === "col"){ ach = (base.col?.req || 0) + e.a; done = (base.col?.res || 0) + e.r; }
+    else if (REC && p.mammo){ ach = k.monthComplete || 0; done = k.monthN || 0; contact = mon[p.k]?.c || 0; }
     else if (p.monthly){ ach = mon[p.k]?.e || 0; done = mon[p.k]?.a || 0; }
+    else if (REC && p.rec){ matched = k.matched || 0; unmatched = k.unmatched || 0; pending = k.pending || 0;
+      ach = (typeof base[p.k] === "number" ? base[p.k] : 0) + matched; matchRate = (matched + unmatched) ? matched / (matched + unmatched) : null; }
     else ach = (typeof base[p.k] === "number" ? base[p.k] : 0) + e.a;
     const pct = on && t ? ach / t : null;
     const comp = p.k === "col" ? (ach ? done / ach : null) : null;
-    const matchRate = e.a ? e.m / e.a : null;
-    res.pw[p.k] = { on, t, ach, done, pct, comp, contact:e.c, match:e.m, dailyA:e.a, matchRate };
+    res.pw[p.k] = { on, t, ach, done, pct, comp, contact, match:e.m || 0, dailyA:e.a || 0, matchRate, matched, unmatched, pending };
   }
   const ps = PW.map(p => res.pw[p.k].pct).filter(v => v != null);
   res.overall = ps.length ? ps.reduce((s,v) => s + Math.min(v,1.5), 0) / ps.length : null;
@@ -499,9 +553,10 @@ function evalCenter(c){
 function sectorTotals(evs){
   const out = {};
   for (const p of PW){
-    let t = 0, a = 0, d = 0, c = 0, m = 0, da = 0, any = false;
-    for (const e of evs){ const x = e.pw[p.k]; if (!x.on) continue; any = true; if (x.t) { t += x.t; a += x.ach; d += x.done || 0; } c += x.contact; m += x.match; da += x.dailyA; }
-    out[p.k] = { any, t, ach:a, done:d, pct: t ? a / t : null, comp: p.k === "col" && a ? d / a : null, contact:c, match:m, matchRate: da ? m / da : null };
+    let t = 0, a = 0, d = 0, c = 0, m = 0, da = 0, mt = 0, um = 0, pe = 0, any = false;
+    for (const e of evs){ const x = e.pw[p.k]; if (!x.on) continue; any = true; if (x.t) { t += x.t; a += x.ach; d += x.done || 0; } c += x.contact; m += x.match; da += x.dailyA; mt += x.matched; um += x.unmatched; pe += x.pending; }
+    out[p.k] = { any, t, ach:a, done:d, pct: t ? a / t : null, comp: p.k === "col" && a ? d / a : null, contact:c, match:m, matched:mt, unmatched:um, pending:pe,
+      matchRate: REC && p.rec ? ((mt + um) ? mt / (mt + um) : null) : (da ? m / da : null) };
   }
   return out;
 }
@@ -543,13 +598,15 @@ function tile(p, x, label){
   if (!x.on && !x.any) return `<div class="kpi off"><span class="k">${p.name}</span><span class="v n">—</span><span class="s">غير مفعّل</span></div>`;
   const pct = x.pct;
   const main = p.monthly
-    ? `<span class="s">المفحوصات هذا الشهر <b class="num">${n(x.ach)}</b> من المستهدف الشهري <b class="num">${n(x.t)}</b> · التحويلات <b class="num">${n(x.done)}</b></span>`
+    ? `<span class="s">التحويلات المكتملة هذا الشهر <b class="num">${n(x.ach)}</b> من المستهدف الشهري <b class="num">${n(x.t)}</b> · إجمالي المحولات <b class="num">${n(x.done)}</b></span>`
     : p.k === "col"
     ? `<span class="s">التغطية: الطلبات <b class="num">${n(x.ach)}</b> من <b class="num">${n(x.t)}</b> · الالتزام <b class="num">${pf(x.comp)}</b></span>`
     : x.t ? `<span class="s">المحقق <b class="num">${n(x.ach)}</b> من المستهدف <b class="num">${n(x.t)}</b></span>` : `<span class="s">المحقق <b class="num">${n(x.ach)}</b> · لم يُحدد المستهدف بعد</span>`;
   return `<div class="kpi"><span class="k">${p.name}</span><span class="v ${vcls(pct)}"><span class="num">${pf(pct)}</span></span>
     <div class="meter"><i style="width:${Math.min(100,(pct||0)*100)}%;--c:${colorOf(pct)}"></i></div>${main}
-    <div class="s2"><span>التواصل <b class="num">${n(x.contact)}</b></span><span>المطابقة <b class="num">${pf(x.matchRate)}</b></span></div></div>`;
+    ${REC ? (p.rec ? `<div class="s2"><span>بانتظار التدقيق <b class="num">${n(x.pending)}</b></span><span>غير مطابق <b class="num">${n(x.unmatched)}</b></span></div>`
+      : p.mammo ? `<div class="s2"><span>التواصل هذا الشهر <b class="num">${n(x.contact)}</b></span></div>` : "")
+      : `<div class="s2"><span>التواصل <b class="num">${n(x.contact)}</b></span><span>المطابقة <b class="num">${pf(x.matchRate)}</b></span></div>`}</div>`;
 }
 
 /* ---- register table ---- */
@@ -558,12 +615,13 @@ function registerTable(evs, tot, highlight){
     const span = S.view === "cm" ? 3 : p.k === "col" ? 5 : p.monthly ? 4 : 3;
     return `<th colspan="${span}" class="grp-${p.k}">${p.name}</th>`;
   }).join("");
-  const sub = PW.map(p => S.view === "cm" ? "<th>التواصل</th><th>المطابقون</th><th>نسبة المطابقة</th>"
+  const sub = PW.map(p => S.view === "cm" ? (p.rec ? "<th>مطابق</th><th>غير مطابق</th><th>بانتظار التدقيق</th>" : p.mammo ? "<th>المحولات</th><th>المكتملة</th><th>التواصل</th>" : "<th colspan=\"3\">—</th>")
     : p.k === "col" ? "<th>المستهدف</th><th>طلبات التحاليل</th><th>النتائج المكتملة</th><th>نسبة التغطية</th><th>نسبة الالتزام</th>"
-    : p.monthly ? "<th>المستهدف الشهري</th><th>التحويلات</th><th>المفحوصات فعلياً</th><th>النسبة</th>" : "<th>المستهدف</th><th>المحقق</th><th>النسبة</th>").join("");
+    : p.monthly ? "<th>المستهدف الشهري</th><th>المحولات</th><th>المكتملة</th><th>النسبة</th>" : "<th>المستهدف</th><th>المحقق</th><th>النسبة</th>").join("");
   const cells = (x, p) => {
     if (!x.on) return `<td class="off" colspan="${S.view === "cm" ? 3 : p.k === "col" ? 5 : p.monthly ? 4 : 3}">غير مفعّل</td>`;
-    if (S.view === "cm") return `<td>${n(x.contact)}</td><td>${n(x.match)}</td><td class="${cls(x.matchRate)}">${pf(x.matchRate)}</td>`;
+    if (S.view === "cm") return p.rec ? `<td class="${x.matched ? "cg" : "cn"}">${n(x.matched)}</td><td class="${x.unmatched ? "cb" : "cn"}">${n(x.unmatched)}</td><td class="${x.pending ? "cw" : "cn"}">${n(x.pending)}</td>`
+      : p.mammo ? `<td>${n(x.done)}</td><td>${n(x.ach)}</td><td>${n(x.contact)}</td>` : `<td class="cn" colspan="3">—</td>`;
     if (p.k === "col") return `<td>${x.t ?? "—"}</td><td>${n(x.ach)}</td><td>${n(x.done)}</td><td class="${cls(x.pct)}">${pf(x.pct)}</td><td class="${cls(x.comp)}">${pf(x.comp)}</td>`;
     if (p.monthly) return `<td>${x.t ?? "—"}</td><td>${n(x.done)}</td><td>${n(x.ach)}</td><td class="${cls(x.pct)}">${pf(x.pct)}</td>`;
     return `<td>${x.t ?? "—"}</td><td>${n(x.ach)}</td><td class="${cls(x.pct)}">${pf(x.pct)}</td>`;
@@ -571,7 +629,8 @@ function registerTable(evs, tot, highlight){
   const rows = pinSalama(evs, e => e.overall).map(({e}, i) => `<tr class="click${e.c.id === S.cfg.salama.id ? " me" : ""}" data-c="${esc(e.c.id)}" tabindex="0"><td>${i + 1}</td><td class="l">${esc(e.c.name)}</td><td class="m">${esc(e.c.manager || "—")}</td>${PW.map(p => cells(e.pw[p.k], p)).join("")}</tr>`).join("");
   const totRow = `<tr class="tot"><td></td><td class="l" style="color:inherit" colspan="2">المجموع</td>${PW.map(p => {
     const x = tot[p.k];
-    if (S.view === "cm") return `<td>${n(x.contact)}</td><td>${n(x.match)}</td><td class="${cls(x.matchRate)}">${pf(x.matchRate)}</td>`;
+    if (S.view === "cm") return p.rec ? `<td class="${x.matched ? "cg" : "cn"}">${n(x.matched)}</td><td class="${x.unmatched ? "cb" : "cn"}">${n(x.unmatched)}</td><td class="${x.pending ? "cw" : "cn"}">${n(x.pending)}</td>`
+      : p.mammo ? `<td>${n(x.done)}</td><td>${n(x.ach)}</td><td>${n(x.contact)}</td>` : `<td class="cn" colspan="3">—</td>`;
     if (p.k === "col") return `<td>${n(x.t)}</td><td>${n(x.ach)}</td><td>${n(x.done)}</td><td class="${cls(x.pct)}">${pf(x.pct)}</td><td class="${cls(x.comp)}">${pf(x.comp)}</td>`;
     if (p.monthly) return `<td>${n(x.t)}</td><td>${n(x.done)}</td><td>${n(x.ach)}</td><td class="${cls(x.pct)}">${pf(x.pct)}</td>`;
     return `<td>${x.t ? n(x.t) : "—"}</td><td>${n(x.ach)}</td><td class="${cls(x.pct)}">${pf(x.pct)}</td>`;
@@ -604,7 +663,7 @@ function render(){
     const sp = PW.map(p => tot[p.k].pct).filter(v => v != null);
     const so = sp.length ? sp.reduce((s,v)=>s+Math.min(v,1.5),0)/sp.length : null;
     h += `<div class="kpis"><div class="kpi main"><span class="k">إنجاز القطاع</span><span class="v"><span class="num">${pf(so)}</span></span><span class="s">متوسط المسارات</span></div>${PW.map(p => tile(p, {...tot[p.k], on:tot[p.k].any})).join("")}</div>`;
-    const missing = centers().filter(c => !dayRec(c.id, TODAY));
+    const missing = centers().filter(c => !reportedOn(c.id, TODAY));
     h += `<h2>الرصد اليومي — ${greg.format(new Date())}</h2><p class="sub">المراكز التي لم ترصد منجز اليوم (${missing.length} من ${centers().length}). اضغط على المركز لفتح لوحته.</p><div class="missing">${missing.length ? missing.map(c => `<button type="button" data-open-c="${esc(c.id)}">${esc(c.name)}</button>`).join("") : `<span class="ok">جميع المراكز رصدت منجز اليوم</span>`}</div>`;
     h += `<h2>المراكز</h2><button type="button" class="extlink cta" id="open-centers2">
       <span class="ico" aria-hidden="true"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></span>
@@ -621,7 +680,7 @@ function render(){
   if (S.openPw) refreshPw(false);
   if (S.cp.open) refreshCenters(false);
 }
-const viewChips = () => `<button type="button" class="chip" data-view="ach" aria-pressed="${S.view==="ach"}">الإنجاز</button><button type="button" class="chip" data-view="cm" aria-pressed="${S.view==="cm"}">التواصل والمطابقة</button>`;
+const viewChips = () => `<button type="button" class="chip" data-view="ach" aria-pressed="${S.view==="ach"}">الإنجاز</button><button type="button" class="chip" data-view="cm" aria-pressed="${S.view==="cm"}">${REC ? "التدقيق والتحويلات" : "التواصل والمطابقة"}</button>`;
 
 /* ---- pathway page: map + daily entry ---- */
 function pwCells(p, x){
@@ -631,9 +690,14 @@ function pwCells(p, x){
 }
 function pwHead(p){
   if (p.k === "col") return "<th>المستهدف</th><th>طلبات التحاليل</th><th>النتائج المكتملة</th><th>نسبة التغطية</th><th>نسبة الالتزام</th>";
-  if (p.monthly) return "<th>المستهدف الشهري</th><th>التحويلات</th><th>المفحوصات فعلياً</th><th>النسبة</th>";
+  if (p.monthly) return "<th>المستهدف الشهري</th><th>المحولات</th><th>المكتملة</th><th>النسبة</th>";
   return "<th>المستهدف</th><th>المحقق</th><th>النسبة</th>";
 }
+function exHead(p){ return !REC ? "<th>التواصل</th><th>المطابقون</th><th>نسبة المطابقة</th>" : p.rec ? "<th>بانتظار التدقيق</th><th>غير مطابق</th><th>نسبة المطابقة</th>" : p.mammo ? "<th>التواصل هذا الشهر</th>" : ""; }
+function exCells(p, y){ return !REC ? `<td>${n(y.contact)}</td><td>${n(y.match)}</td><td class="${cls(y.matchRate)}">${pf(y.matchRate)}</td>`
+  : p.rec ? `<td class="${y.pending ? "cw" : "cn"}">${n(y.pending)}</td><td class="${y.unmatched ? "cb" : "cn"}">${n(y.unmatched)}</td><td class="${cls(y.matchRate)}">${pf(y.matchRate)}</td>`
+  : p.mammo ? `<td>${n(y.contact)}</td>` : ""; }
+const exCount = p => !REC ? 3 : p.rec ? 3 : p.mammo ? 1 : 0;
 const pinSalama = (arr, get) => { const id = S.cfg.salama.id; const ranked = arr.map((e,i) => ({ e, rank: get(e) == null ? null : i + 1 })); const me = ranked.filter(r => r.e.c.id === id); return [...me, ...ranked.filter(r => r.e.c.id !== id)]; };
 const bar = pct => `<div class="meter" style="min-width:110px"><i style="width:${Math.min(100,(pct||0)*100)}%;--c:${colorOf(pct)}"></i></div>`;
 function refreshPw(force){
@@ -652,10 +716,10 @@ function refreshPw(force){
       : `<td>${x.t ? n(x.t) : "—"}</td>${p.monthly ? `<td>${n(x.done)}</td>` : ""}<td>${n(x.ach)}</td><td class="${cls(x.pct)}">${pf(x.pct)}</td>`;
     m = `<h3>خريطة إنجاز المراكز — ${p.name}</h3>
       <div class="kpis" style="margin-block:6px 10px">${tile(p, {...x, on:x.any})}</div>
-      <div class="scroll"><table style="min-width:900px"><thead><tr><th>م</th><th>المركز</th><th>مدير المركز</th>${pwHead(p)}<th>الإنجاز</th><th>التواصل</th><th>المطابقون</th><th>نسبة المطابقة</th></tr></thead><tbody>
-      ${pinSalama(on, e => e.pw[p.k].pct).map(({e}, i) => { const y = e.pw[p.k]; return `<tr${e.c.id === S.cfg.salama.id ? ' class="me"' : ""}><td>${i + 1}</td><td class="l">${esc(e.c.name)}</td><td class="m">${esc(e.c.manager || "—")}</td>${pwCells(p, y)}<td>${bar(y.pct)}</td><td>${n(y.contact)}</td><td>${n(y.match)}</td><td class="${cls(y.matchRate)}">${pf(y.matchRate)}</td></tr>`; }).join("")}
-      ${off.map(e => `<tr><td></td><td class="l">${esc(e.c.name)}</td><td class="m">${esc(e.c.manager || "—")}</td><td class="off" colspan="${(p.k === "col" ? 5 : p.monthly ? 4 : 3) + 4}">غير مفعّل</td></tr>`).join("")}
-      <tr class="tot"><td></td><td class="l" style="color:inherit" colspan="2">المجموع</td>${totCells}<td></td><td>${n(x.contact)}</td><td>${n(x.match)}</td><td class="${cls(x.matchRate)}">${pf(x.matchRate)}</td></tr>
+      <div class="scroll"><table style="min-width:900px"><thead><tr><th>م</th><th>المركز</th><th>مدير المركز</th>${pwHead(p)}<th>الإنجاز</th>${exHead(p)}</tr></thead><tbody>
+      ${pinSalama(on, e => e.pw[p.k].pct).map(({e}, i) => { const y = e.pw[p.k]; return `<tr${e.c.id === S.cfg.salama.id ? ' class="me"' : ""}><td>${i + 1}</td><td class="l">${esc(e.c.name)}</td><td class="m">${esc(e.c.manager || "—")}</td>${pwCells(p, y)}<td>${bar(y.pct)}</td>${exCells(p, y)}</tr>`; }).join("")}
+      ${off.map(e => `<tr><td></td><td class="l">${esc(e.c.name)}</td><td class="m">${esc(e.c.manager || "—")}</td><td class="off" colspan="${(p.k === "col" ? 5 : p.monthly ? 4 : 3) + 1 + exCount(p)}">غير مفعّل</td></tr>`).join("")}
+      <tr class="tot"><td></td><td class="l" style="color:inherit" colspan="2">المجموع</td>${totCells}<td></td>${exCells(p, x)}</tr>
       </tbody></table></div>
       <div class="legend"><span><i style="background:var(--ok-bg)"></i>٩٠٪ فأكثر</span><span><i style="background:var(--warn-bg)"></i>من ٧٠ إلى ٨٩٪</span><span><i style="background:var(--bad-bg)"></i>أقل من ٧٠٪</span></div>`;
   }
@@ -668,8 +732,9 @@ function pwCenters(k){
 function renderPwEntry(force){
   const p = PWK[S.openPw], box = $("pwp-entry"); if (!p || !box) return;
   const list = pwCenters(p.k);
-  if (!list.length){ box.innerHTML = `<h3>رصد المنجز اليومي — ${p.name}</h3><p class="muted">هذا المسار غير مفعّل لهذا المركز حالياً.</p>`; return; }
+  if (!list.length){ box.innerHTML = `<h3>رصد المنجز اليومي — ${p.name}</h3><p class="muted">هذا المسار غير مفعّل لهذا المركز حالياً.</p>`; renderAudit(p, force); return; }
   if (!list.find(c => c.id === S.pe.center)) S.pe.center = list.find(c => c.id === S.eCenter)?.id || list[0].id;
+  if (REC && (p.rec || p.mammo)) { renderRecEntry(p, box, list, force); renderAudit(p, force); return; }
   const keep = !force && S.pe.dirty ? [...box.querySelectorAll("input[data-f]")].map(i => [i.dataset.f, i.value]) : null;
   const rec = dayRec(S.pe.center, S.pe.date)?.[p.k] || {};
   const hist = [];
@@ -719,6 +784,186 @@ async function savePw(e, p){
   } finally { btn.disabled = !canW(S.pe.center); }
 }
 
+/* ---- records (civil IDs, mammogram referrals) and audit ---- */
+const toLatin = s => String(s || "").replace(/[٠-٩]/g, d => "٠١٢٣٤٥٦٧٨٩".indexOf(d)).replace(/[۰-۹]/g, d => "۰۱۲۳۴۵۶۷۸۹".indexOf(d));
+const yn = v => v === true ? "نعم" : v === false ? "لا" : "—";
+async function loadDay(p, force){
+  const key = `${p.k}|${S.pe.center}|${S.pe.date}`;
+  if (!canRead(S.pe.center)) { S.rl = { key, rows:null, loading:false }; return; }
+  if (!force && S.rl.key === key && (S.rl.rows || S.rl.loading)) return;
+  S.rl = { key, rows: S.rl.key === key ? S.rl.rows : null, loading:true };
+  try { const rows = await window.MOCREC.list({ pathway:p.k, center:S.pe.center, day:S.pe.date }); if (S.rl.key === key) S.rl = { key, rows, loading:false }; }
+  catch (e) { if (S.rl.key === key) S.rl = { key, rows:[], loading:false }; }
+  if (S.openPw === p.k && $("pwp-entry")) renderRecEntry(p, $("pwp-entry"), pwCenters(p.k), false);
+}
+function renderRecEntry(p, box, list, force){
+  const cid = S.pe.center, w = canW(cid), key = `${p.k}|${cid}|${S.pe.date}`;
+  if (S.rl.key !== key) loadDay(p, true); else if (force && !S.rl.loading) loadDay(p, true);
+  const keep = !force ? [...box.querySelectorAll("input[id^=pr-],textarea[id^=pr-],input[id^=pm-],select[id^=pm-]")].map(el => [el.id, el.value]) : null;
+  const day = S.cntDay.get(cid + "|" + p.k + "|" + S.pe.date) || { n:0, matched:0, unmatched:0, pending:0, complete:0 };
+  const dc = dayRec(cid, S.pe.date)?.[p.k]?.c;
+  const rows = S.rl.key === key ? S.rl.rows : null;
+  let h = `<h3>رصد المنجز اليومي — ${p.name}</h3>
+    <div class="entry-top" style="margin-top:6px">
+      ${MODE === "salama" ? "" : `<div class="field"><label for="pe-center">المركز</label><select class="in" id="pe-center">${list.map(c => `<option value="${esc(c.id)}" ${c.id===cid?"selected":""}>${esc(c.name)}</option>`).join("")}</select></div>`}
+      <div class="field"><label for="pe-date">التاريخ</label><input class="in" type="date" id="pe-date" min="${minDate()}" max="${TODAY}" value="${S.pe.date}"></div>
+      <div class="field"><span class="offnote">${hijri.format(parse(S.pe.date))}</span></div>
+    </div>`;
+  h += p.rec
+    ? `<div class="rsum"><span>عدد المفحوصين: ${n(day.n)}</span><span>مطابق: ${n(day.matched)}</span><span>غير مطابق: ${n(day.unmatched)}</span><span>بانتظار التدقيق: ${n(day.pending)}</span></div>`
+    : `<div class="rsum"><span>عدد المحولين: ${n(day.n)}</span><span>المكتملة: ${n(day.complete)}</span><span>عدد التواصل: ${n(dc)}</span></div>`;
+  if (w){
+    if (p.rec) h += `<form class="recform" id="pr-form" novalidate>
+      <label for="pr-ids" style="font-weight:700;color:var(--navy)">السجل المدني للمفحوصين</label>
+      <textarea id="pr-ids" inputmode="numeric" placeholder="1xxxxxxxxx" aria-describedby="pr-note"></textarea>
+      <span class="recnote" id="pr-note">سجل مدني واحد في كل سطر، أو الصق مجموعة سجلات مرة واحدة. عدد المفحوصين يُحسب تلقائياً من عدد السجلات.</span>
+      <div class="actions"><button class="btn" type="submit" id="pr-save">إضافة المفحوصين</button><span class="msg" id="pr-msg"></span></div></form>`;
+    else h += `<form class="recform" id="pm-form" novalidate>
+      <div class="recgrid">
+        <div class="field"><label for="pm-nid">السجل المدني</label><input class="in" id="pm-nid" inputmode="numeric" maxlength="10" dir="ltr" placeholder="1xxxxxxxxx"></div>
+        <div class="field"><label for="pm-phone">رقم الجوال</label><input class="in" id="pm-phone" inputmode="tel" maxlength="10" dir="ltr" placeholder="05xxxxxxxx"></div>
+        ${[["mawid","التحويل على نظام موعد"],["platform","إضافة البيانات لمنصة المسار"],["raqeem","إدخال الأوردر في رقيم"]].map(([f,l]) => `<div class="field"><label for="pm-${f}">${l}</label><select class="in" id="pm-${f}"><option value="">اختر</option><option value="1">نعم</option><option value="0">لا</option></select></div>`).join("")}
+      </div>
+      <div class="actions"><button class="btn" type="submit" id="pm-save">إضافة التحويل</button><span class="msg" id="pm-msg"></span></div></form>
+      <form class="recform" id="pm-cform" novalidate style="margin-top:10px"><div class="frow" style="max-width:420px"><label for="pm-c">عدد التواصل في هذا اليوم</label><input id="pm-c" type="number" min="0" step="1" inputmode="numeric" placeholder="0" value="${dc ?? ""}"></div>
+      <div class="actions"><button class="btn ghost sm" type="submit">حفظ عدد التواصل</button><span class="msg" id="pm-cmsg"></span></div></form>`;
+  } else h += `<p class="msg bad" style="margin-top:6px">${NOWRITE()}</p>`;
+  if (canRead(cid)){
+    if (!rows) h += `<p class="muted">جارٍ تحميل السجلات…</p>`;
+    else if (!rows.length) h += `<p class="muted">لا توجد سجلات لهذا اليوم.</p>`;
+    else h += `<div class="scroll" style="margin-top:8px"><table style="min-width:${p.rec ? 460 : 780}px"><thead><tr><th>م</th><th>السجل المدني</th>${p.mammo ? "<th>الجوال</th><th>موعد</th><th>منصة المسار</th><th>رقيم</th><th>الحالة</th>" : "<th>التدقيق</th>"}<th></th></tr></thead><tbody>${rows.map((r, i) => {
+      const editable = w && (p.mammo || !r.audit);
+      const del = editable ? `<button type="button" class="btn del" data-del="${esc(r.id)}">حذف</button>` : "";
+      if (p.rec) return `<tr><td>${i+1}</td><td class="nid">${esc(r.nid)}</td><td>${r.audit ? `<span class="pill ${r.audit === "match" ? "g" : "r"}">${AUD[r.audit] || r.audit}</span>` : `<span class="pill w">بانتظار التدقيق</span>`}</td><td>${del}</td></tr>`;
+      const sel = f => w ? `<select class="yn ${r[f] === true ? "y" : r[f] === false ? "n" : ""}" data-yn="${f}" data-id="${esc(r.id)}" aria-label="${f}"><option value="1" ${r[f] === true ? "selected" : ""}>نعم</option><option value="0" ${r[f] === false ? "selected" : ""}>لا</option></select>` : yn(r[f]);
+      const done = r.mawid && r.platform && r.raqeem;
+      return `<tr><td>${i+1}</td><td class="nid">${esc(r.nid)}</td><td class="nid">${esc(r.phone || "")}</td><td>${sel("mawid")}</td><td>${sel("platform")}</td><td>${sel("raqeem")}</td><td><span class="pill ${done ? "g" : "w"}">${done ? "مكتمل" : "غير مكتمل"}</span></td><td>${del}</td></tr>`;
+    }).join("")}</tbody></table></div>`;
+  } else h += `<p class="recnote" style="margin-top:6px">السجلات المدنية وأرقام الجوال تظهر لمدير المركز وفريق التدقيق فقط.</p>`;
+  const hist = [];
+  for (let i = 0; i < 7; i++){ const d = parse(TODAY); d.setDate(d.getDate() - i); const ds = ymd(d); if (ds < minDate()) break; hist.push(ds); }
+  h += `<h3 style="margin-top:14px;font-size:17px">آخر ٧ أيام — ${esc(centerById(cid).name)}</h3><div class="scroll"><table style="min-width:420px"><thead><tr><th>التاريخ</th>${p.rec ? "<th>المفحوصين</th><th>مطابق</th><th>غير مطابق</th><th>بانتظار التدقيق</th>" : "<th>المحولين</th><th>المكتملة</th><th>التواصل</th>"}</tr></thead><tbody>${hist.map(ds => {
+    const r = S.cntDay.get(cid + "|" + p.k + "|" + ds), c = p.mammo ? dayRec(cid, ds)?.br?.c : null;
+    if (!r && c == null) return `<tr><td><span class="num">${ds}</span></td><td class="cb" colspan="${p.rec ? 4 : 3}">لم يُرصد</td></tr>`;
+    return p.rec ? `<tr><td><span class="num">${ds}</span></td><td>${n(r?.n)}</td><td>${n(r?.matched)}</td><td>${n(r?.unmatched)}</td><td>${n(r?.pending)}</td></tr>`
+      : `<tr><td><span class="num">${ds}</span></td><td>${n(r?.n)}</td><td>${n(r?.complete)}</td><td>${n(c)}</td></tr>`; }).join("")}</tbody></table></div>`;
+  box.innerHTML = h;
+  if (keep) keep.forEach(([id, v]) => { const el = document.getElementById(id); if (el && v) el.value = v; });
+  $("pe-center")?.addEventListener("change", e => { S.pe.center = e.target.value; renderPwEntry(true); });
+  $("pe-date").addEventListener("change", e => { const v = e.target.value; if (!v || v > TODAY || v < minDate()) { e.target.value = S.pe.date; return; } S.pe.date = v; renderPwEntry(true); });
+  $("pr-form")?.addEventListener("submit", e => addIds(e, p));
+  $("pm-form")?.addEventListener("submit", e => addMammo(e, p));
+  $("pm-cform")?.addEventListener("submit", e => saveContact(e, p));
+  box.querySelectorAll("[data-yn]").forEach(s => s.addEventListener("change", () => patchRec(s.dataset.id, { [s.dataset.yn]: s.value === "1" }, p)));
+  box.querySelectorAll("[data-del]").forEach(b => b.addEventListener("click", () => delRec(b, p)));
+}
+const denyMsg = err => DENIED(err) ? "لا تملك صلاحية الرصد لهذا المركز." : "تعذّر الحفظ. تحقق من الاتصال وحاول مرة أخرى.";
+async function addIds(e, p){
+  e.preventDefault();
+  const msg = $("pr-msg"); msg.className = "msg bad";
+  const raw = toLatin($("pr-ids").value).split(/[^0-9]+/).filter(Boolean);
+  const bad = raw.filter(x => !/^[12]\d{9}$/.test(x));
+  const uniq = [...new Set(raw.filter(x => /^[12]\d{9}$/.test(x)))];
+  const existing = new Set((S.rl.rows || []).map(r => r.nid));
+  const fresh = uniq.filter(x => !existing.has(x));
+  if (bad.length){ msg.textContent = `سجلات غير صحيحة (السجل ١٠ أرقام يبدأ بـ 1 أو 2): ${bad.slice(0,5).join("، ")}${bad.length > 5 ? "…" : ""}`; return; }
+  if (!fresh.length){ msg.textContent = uniq.length ? "هذه السجلات مضافة مسبقاً لهذا اليوم." : "أدخل سجلاً مدنياً واحداً على الأقل."; return; }
+  const btn = $("pr-save"); btn.disabled = true; msg.className = "msg"; msg.textContent = "جارٍ الحفظ…";
+  try {
+    await window.MOCREC.add(fresh.map(nid => ({ center:S.pe.center, pathway:p.k, day:S.pe.date, nid })));
+    $("pr-ids").value = "";
+    toast(`تمت إضافة ${fresh.length} مفحوص لمسار ${p.name}${uniq.length > fresh.length ? ` (تُجوهل ${uniq.length - fresh.length} مكرر)` : ""}`);
+    await loadDay(p, true);
+  } catch (err) { const m = $("pr-msg"); if (m) { m.className = "msg bad"; m.textContent = denyMsg(err); } }
+  finally { const b = $("pr-save"); if (b) b.disabled = false; }
+}
+async function addMammo(e, p){
+  e.preventDefault();
+  const msg = $("pm-msg"); msg.className = "msg bad";
+  const nid = toLatin($("pm-nid").value).trim(), phone = toLatin($("pm-phone").value).replace(/[\s-]/g, "");
+  const v = f => $("pm-" + f).value;
+  if (!/^[12]\d{9}$/.test(nid)) { msg.textContent = "السجل المدني ١٠ أرقام يبدأ بـ 1 أو 2."; $("pm-nid").focus(); return; }
+  if (!/^05\d{8}$/.test(phone)) { msg.textContent = "رقم الجوال ١٠ أرقام يبدأ بـ 05."; $("pm-phone").focus(); return; }
+  for (const f of ["mawid","platform","raqeem"]) if (!v(f)) { msg.textContent = "اختر «نعم» أو «لا» لكل خطوة من خطوات التحويل."; $("pm-" + f).focus(); return; }
+  if ((S.rl.rows || []).some(r => r.nid === nid)) { msg.textContent = "هذا السجل مضاف مسبقاً لهذا اليوم."; return; }
+  const btn = $("pm-save"); btn.disabled = true; msg.className = "msg"; msg.textContent = "جارٍ الحفظ…";
+  try {
+    await window.MOCREC.add([{ center:S.pe.center, pathway:"br", day:S.pe.date, nid, phone, mawid:v("mawid") === "1", platform:v("platform") === "1", raqeem:v("raqeem") === "1" }]);
+    ["nid","phone","mawid","platform","raqeem"].forEach(f => { const el = $("pm-" + f); if (el) el.value = ""; });
+    toast("تمت إضافة التحويل."); await loadDay(p, true);
+  } catch (err) { const m = $("pm-msg"); if (m) { m.className = "msg bad"; m.textContent = denyMsg(err); } }
+  finally { const b = $("pm-save"); if (b) b.disabled = false; }
+}
+async function saveContact(e, p){
+  e.preventDefault();
+  const msg = $("pm-cmsg"), raw = $("pm-c").value.trim(), c = raw === "" ? 0 : Number(toLatin(raw));
+  if (!Number.isInteger(c) || c < 0) { msg.className = "msg bad"; msg.textContent = "أدخل عدداً صحيحاً موجباً."; return; }
+  const d = parse(S.pe.date), id = `${S.pe.center}_${d.getFullYear()}-${pad(d.getMonth()+1)}`, dd = pad(d.getDate());
+  try {
+    const ref = S.db.doc(`entries/${id}`), snap = await ref.get(), day = { br:{ c }, by:S.uid, at:new Date().toISOString() };
+    if (snap.exists) await ref.update({ days:{ [dd]: day } }); else await ref.set({ center:S.pe.center, year:d.getFullYear(), month:d.getMonth()+1, days:{ [dd]: day } });
+    toast("تم حفظ عدد التواصل."); msg.textContent = "";
+  } catch (err) { msg.className = "msg bad"; msg.textContent = denyMsg(err); }
+}
+async function patchRec(id, patch, p){
+  try { await window.MOCREC.update(id, patch); toast("تم التحديث."); }
+  catch (err) { toast(DENIED(err) ? "لا يمكن تعديل هذا السجل." : "تعذّر التحديث."); }
+  await loadDay(p, true);
+}
+async function delRec(b, p){
+  if (b.dataset.confirm !== "1") { b.dataset.confirm = "1"; b.textContent = "تأكيد الحذف"; setTimeout(() => { if (b.isConnected) { b.dataset.confirm = ""; b.textContent = "حذف"; } }, 4000); return; }
+  b.disabled = true;
+  try { await window.MOCREC.remove(b.dataset.del); toast("تم حذف السجل."); }
+  catch (err) { toast(DENIED(err) ? "لا يمكن حذف سجل تم تدقيقه." : "تعذّر الحذف."); }
+  await loadDay(p, true);
+}
+async function loadAudit(p, force){
+  if (!force && S.al.k === p.k && (S.al.rows || S.al.loading)) return;
+  S.al = { k:p.k, rows: S.al.k === p.k ? S.al.rows : null, loading:true };
+  const from = new Date(); from.setDate(from.getDate() - 400);
+  try { const rows = await window.MOCREC.list({ pathway:p.k, from:ymd(from) }); if (S.al.k === p.k) S.al = { k:p.k, rows, loading:false }; }
+  catch (e) { if (S.al.k === p.k) S.al = { k:p.k, rows:[], loading:false }; }
+  if (S.openPw === p.k) renderAudit(p, false);
+}
+function renderAudit(p, force){
+  const box = $("pwp-audit"); if (!box) return;
+  if (!REC || !p.rec || !isAuditor()) { box.hidden = true; box.innerHTML = ""; return; }
+  box.hidden = false;
+  if (S.al.k !== p.k) loadAudit(p, true); else if (force && !S.al.loading) loadAudit(p, true);
+  if (!force && box.contains(document.activeElement) && document.activeElement.matches("select[data-aud]")) return;
+  const rows = S.al.k === p.k ? S.al.rows : null;
+  let h = `<h3>تدقيق السجلات — ${p.name}</h3><p class="recnote">خاص بفريق التدقيق في إدارة القطاع. السجلات «المطابقة» فقط تُحتسب في المؤشر.</p>
+    <div class="entry-top" style="margin-top:6px">
+      <div class="field"><label for="au-center">المركز</label><select class="in" id="au-center"><option value="">جميع المراكز</option>${centers().filter(c => isOn(c, p.k)).map(c => `<option value="${esc(c.id)}" ${S.af.center === c.id ? "selected" : ""}>${esc(c.name)}</option>`).join("")}</select></div>
+      <div class="field"><label for="au-status">الحالة</label><select class="in" id="au-status">${[["pending","بانتظار التدقيق"],["all","الكل"],["match","مطابق"],["bad","غير مطابق"]].map(([v,l]) => `<option value="${v}" ${S.af.status === v ? "selected" : ""}>${l}</option>`).join("")}</select></div>
+      <div class="field"><span class="offnote">&nbsp;</span><button type="button" class="btn ghost sm" id="au-reload">تحديث القائمة</button></div>
+    </div>`;
+  if (!rows) h += `<p class="muted">جارٍ تحميل السجلات…</p>`;
+  else {
+    const byNid = new Map();
+    for (const r of rows) { if (!byNid.has(r.nid)) byNid.set(r.nid, []); byNid.get(r.nid).push(r); }
+    const prior = r => (byNid.get(r.nid) || []).find(o => o.id !== r.id && (o.day < r.day || (o.day === r.day && o.created_at < r.created_at)) && (parse(r.day) - parse(o.day)) / 864e5 < 365);
+    let f = rows.filter(r => (!S.af.center || r.center === S.af.center) && (S.af.status === "all" || (S.af.status === "pending" ? !r.audit : S.af.status === "match" ? r.audit === "match" : (r.audit && r.audit !== "match"))));
+    const total = f.length; f = f.slice(0, 300);
+    h += `<div class="rsum"><span>المعروض: ${n(total)}</span><span>بانتظار التدقيق في كل المراكز: ${n(rows.filter(r => !r.audit).length)}</span></div>`;
+    h += !f.length ? `<p class="muted">لا توجد سجلات بهذه الحالة.</p>` : `<div class="scroll"><table style="min-width:780px"><thead><tr><th>المركز</th><th>التاريخ</th><th>السجل المدني</th><th>ملاحظة</th><th>التدقيق</th></tr></thead><tbody>${f.map(r => {
+      const pr = prior(r);
+      return `<tr><td class="l">${esc(centerById(r.center)?.name || r.center)}</td><td><span class="num">${esc(r.day)}</span></td><td class="nid">${esc(r.nid)}</td>
+        <td>${pr ? `<span class="pill w">مكرر: سبق فحصه ${esc(pr.day)}${pr.center !== r.center ? " — " + esc(centerById(pr.center)?.name || pr.center) : ""}</span>` : ""}</td>
+        <td><select class="audsel ${r.audit === "match" ? "match" : r.audit ? "bad" : ""}" data-aud="${esc(r.id)}" aria-label="تدقيق السجل ${esc(r.nid)}"><option value="">بانتظار التدقيق</option>${Object.entries(AUD).map(([v,l]) => `<option value="${v}" ${r.audit === v ? "selected" : ""}>${l}</option>`).join("")}</select></td></tr>`; }).join("")}</tbody></table></div>${total > 300 ? `<p class="recnote">يظهر أول ٣٠٠ سجل. اختر مركزاً لعرض باقي السجلات.</p>` : ""}`;
+  }
+  box.innerHTML = h;
+  $("au-center").addEventListener("change", e => { S.af.center = e.target.value; renderAudit(p, false); });
+  $("au-status").addEventListener("change", e => { S.af.status = e.target.value; renderAudit(p, false); });
+  $("au-reload").addEventListener("click", () => loadAudit(p, true));
+  box.querySelectorAll("select[data-aud]").forEach(s => s.addEventListener("change", async () => {
+    const v = s.value || null; s.disabled = true;
+    try { const r = await window.MOCREC.update(s.dataset.aud, { audit:v }); const row = S.al.rows?.find(x => x.id === r.id); if (row) Object.assign(row, r); toast(v ? `تم التدقيق: ${AUD[v]}` : "أُعيد السجل إلى «بانتظار التدقيق»"); }
+    catch (err) { toast(DENIED(err) ? "لا تملك صلاحية التدقيق." : "تعذّر حفظ التدقيق."); }
+    s.blur(); renderAudit(p, false);
+  }));
+}
+
 /* ---- entry ---- */
 function entrySection(fixed){
   return `<h2 id="h-entry">رصد المنجز اليومي</h2><p class="sub">يُدخل كل مركز منجزه اليومي لكل مسار. التاريخ يبدأ من ${minDate()} لأن ما قبله محسوب في الرصيد الافتتاحي.</p>
@@ -747,8 +992,10 @@ function renderEntry(force){
   if (force || !S.dirty){
     $("e-fields").innerHTML = PW.map(p => {
       const on = isOn(c, p.k), r = rec?.[p.k] || {};
-      return `<fieldset class="pwf" ${on && canW(S.eCenter) ? "" : "disabled"}><legend>${p.name}</legend>${on ? p.fields.map(([f, lab]) =>
-        `<div class="frow"><label for="f-${p.k}-${f}">${lab}</label><input id="f-${p.k}-${f}" data-p="${p.k}" data-f="${f}" type="number" min="0" step="1" inputmode="numeric" placeholder="0" value="${r[f] ?? ""}"></div>`).join("") : `<span class="offnote">غير مفعّل لهذا المركز حالياً</span>`}</fieldset>`;
+      const open = REC && on && (p.rec || p.mammo) ? `<button type="button" class="btn ghost sm" data-open-rec="${p.k}">${p.mammo ? "رصد التحويلات" : "رصد السجلات المدنية"} ←</button>` : "";
+      if (REC && p.rec) return `<div class="pwcell"><div class="recbox"><b>${p.name}</b>${on ? `<span class="recnote">يُرصد بالسجل المدني لكل مفحوص من صفحة المسار.</span>${open}` : `<span class="offnote">غير مفعّل لهذا المركز حالياً</span>`}</div></div>`;
+      return `<div class="pwcell"><fieldset class="pwf" ${on && canW(S.eCenter) ? "" : "disabled"}><legend>${p.name}</legend>${on ? fieldsOf(p).map(([f, lab]) =>
+        `<div class="frow"><label for="f-${p.k}-${f}">${lab}</label><input id="f-${p.k}-${f}" data-p="${p.k}" data-f="${f}" type="number" min="0" step="1" inputmode="numeric" placeholder="0" value="${r[f] ?? ""}"></div>`).join("") : `<span class="offnote">غير مفعّل لهذا المركز حالياً</span>`}</fieldset>${open}</div>`;
     }).join("");
     S.dirty = false;
   }
@@ -770,7 +1017,7 @@ function renderCal(){
   const dim = new Date(y, m+1, 0).getDate(), offset = (new Date(y, m, 1).getDay() + 1) % 7, md = minDate();
   let h = ["س","ح","ن","ث","ر","خ","ج"].map(d => `<div class="dow">${d}</div>`).join("") + "<div></div>".repeat(offset), ok = 0;
   for (let d = 1; d <= dim; d++){
-    const ds = `${y}-${pad(m+1)}-${pad(d)}`, rec = dayRec(S.eCenter, ds);
+    const ds = `${y}-${pad(m+1)}-${pad(d)}`, rec = reportedOn(S.eCenter, ds);
     const k = ds > TODAY ? "fut" : ds < md ? "pre" : rec ? "ok" : "miss"; if (rec) ok++;
     h += `<button type="button" class="${k}${ds===S.eDate?" sel":""}" data-d="${ds}" ${k==="fut"||k==="pre"?"disabled":""}><span class="num">${d}</span></button>`;
   }
@@ -805,7 +1052,7 @@ function refreshCenters(force){
   const sorted = [...evs].sort((a,b) => (b.overall ?? -1) - (a.overall ?? -1));
   if (!S.cp.center){
     $("cp-bar").innerHTML = `<button type="button" class="btn ghost sm" data-cp="close">→ رجوع للصفحة الرئيسية</button>`;
-    const reported = centers().filter(c => dayRec(c.id, TODAY)).length;
+    const reported = centers().filter(c => reportedOn(c.id, TODAY)).length;
     let h = `<div class="title"><h1 id="cp-title">مراكز القطاع الشمالي<span class="t2">${centers().length} مركزاً · رصد اليوم ${reported} من ${centers().length}</span></h1></div>
       <div class="bar" role="group" aria-label="طريقة العرض" style="margin-top:4px"><b>العرض:</b>
         <button type="button" class="chip" data-cpv="tiles" aria-pressed="${S.cp.view==="tiles"}">خانات المراكز</button>
@@ -814,7 +1061,7 @@ function refreshCenters(force){
       h += `<p class="sub">المراكز مرتبة حسب متوسط الإنجاز. اضغط على أي مركز لفتح لوحة إنجازه.</p><div class="bar" role="group" aria-label="المؤشرات"><b>المؤشرات:</b>${viewChips()}</div>` + registerTable(sorted, tot, null);
     } else {
       h += `<p class="sub">اضغط على أي مركز لفتح لوحة إنجازه ورصد منجزه اليومي. النسبة = متوسط إنجاز المسارات المفعّلة.</p><div class="ctiles">${pinSalama(sorted, e => e.overall).map(({e}, i) => {
-        const today = dayRec(e.c.id, TODAY);
+        const today = reportedOn(e.c.id, TODAY);
         return `<button type="button" class="ctile${e.c.id === S.cfg.salama.id ? " me" : ""}" data-c="${esc(e.c.id)}">
           <span class="top"><span class="no">${i + 1}</span>${today ? `<span class="pill g">رصد اليوم</span>` : `<span class="pill r">لم يرصد اليوم</span>`}</span>
           <b>${esc(e.c.name)}</b><span class="mg">${esc(e.c.manager || "—")}</span>
@@ -833,7 +1080,7 @@ function refreshCenters(force){
   $("cp-in").innerHTML = `<div class="title"><h1 id="cp-title">مركز ${esc(e.c.name)}<span class="t2">لوحة الإنجاز — المسارات الوطنية ٢٠٢٦</span></h1></div>
     <div class="strip"><div style="grid-column:span 2"><span class="lb">مدير المركز:</span><b>${esc(e.c.manager || "—")}</b></div>
       <div><span class="lb">أيام الرصد منذ ${minDate()}</span><b class="num">${e.days.size}</b></div>
-      <div class="term">${dayRec(e.c.id, TODAY) ? "رصد منجز اليوم ✓" : "لم يرصد منجز اليوم"}</div></div>
+      <div class="term">${reportedOn(e.c.id, TODAY) ? "رصد منجز اليوم ✓" : "لم يرصد منجز اليوم"}</div></div>
     ${e.c.id === "c16" ? `<a class="extlink" href="https://forms.gle/8PSjDGbmY4XRNSGx7" target="_blank" rel="noopener noreferrer">
       <span class="ico" aria-hidden="true"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6a1 1 0 0 1 1 1v1h2a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h2V4a1 1 0 0 1 1-1z"/><path d="M9 12l2 2 4-4"/></svg></span>
       <span class="txt"><b>رابط إدخال الفحوصات اليومي</b><small>يخص مركز بيش فقط</small></span>
@@ -933,12 +1180,14 @@ function renderAdmin(){
   S.db = db;
   if (user) { S.uid = await user.id(); const cw = await user.can("data.write"); S.canWrite = cw !== false; S.canAdmin = await user.canEdit();
     S.myCenter = typeof user.center === "function" ? (await user.center()) || null : null;
+    S.role = typeof user.role === "function" ? (await user.role()) || "" : "";
     if (S.myCenter) { S.eCenter = S.myCenter; S.pe.center = S.myCenter; } }
   db.doc("config/main").onSnapshot(snap => {
     if (!snap.exists) { $("main").innerHTML = `<div class="empty" style="margin-top:20px">لم تُجهّز بيانات المراكز بعد.</div>`; return; }
     S.cfg = snap.data(); S.draft = null; render();
   }, () => toast("انقطع الاتصال بالبيانات. أعد تحميل الصفحة."));
   if (MODE === "salama" && !EXT) db.doc("summary/sector").onSnapshot(snap => { S.summary = snap.exists ? snap.data() : null; if (S.cfg) render(); }, () => {});
+  if (REC) window.MOCREC.onCounts(rows => { setCounts(rows); if (S.cfg && !(document.activeElement && document.activeElement.closest?.("#adm-body"))) render(); }, () => {});
   db.collection("entries").onSnapshot(snap => {
     S.entries = new Map(snap.docs.map(d => [d.id, d.data()]));
     if (S.cfg && !(document.activeElement && document.activeElement.closest?.("#adm-body"))) render();
