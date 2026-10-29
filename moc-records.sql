@@ -1,7 +1,7 @@
 -- منصة المسارات الوطنية — سجلات المستفيدين والتدقيق
 -- الصق هذا الملف كاملاً في Supabase > SQL Editor ثم اضغط Run (مرة واحدة، بعد moc-setup.sql).
 -- في الأسفل يظهر جدول بحسابات فريق التدقيق وكلمات مرورها (تظهر مرة واحدة فقط — انسخه واحفظه).
--- آمن لإعادة التشغيل، ولا يمس جداول الصحة المدرسية.
+-- آمن لإعادة التشغيل (لا يغيّر كلمة مرور حساب موجود)، ولا يمس جداول الصحة المدرسية.
 
 -- 1) جدول السجلات (مقفل: لا يقرؤه الزوار)
 create table if not exists public.moc_records (
@@ -21,6 +21,7 @@ create table if not exists public.moc_records (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+alter table public.moc_records add column if not exists audit_name text;
 create index if not exists moc_records_cpd on public.moc_records (center, pathway, day);
 create index if not exists moc_records_pa on public.moc_records (pathway, audit);
 alter table public.moc_records enable row level security;
@@ -59,13 +60,15 @@ create or replace function public.moc_rec_guard() returns trigger language plpgs
 begin
   if public.moc_role() not in ('owner','moc_auditor') then
     if tg_op = 'INSERT' then
-      new.audit := null; new.audit_by := null; new.audit_at := null;
+      new.audit := null; new.audit_by := null; new.audit_at := null; new.audit_name := null;
     else
-      new.audit := old.audit; new.audit_by := old.audit_by; new.audit_at := old.audit_at;
+      new.audit := old.audit; new.audit_by := old.audit_by; new.audit_at := old.audit_at; new.audit_name := old.audit_name;
       new.center := old.center; new.pathway := old.pathway;
     end if;
   elsif tg_op = 'UPDATE' and new.audit is distinct from old.audit then
     new.audit_by := auth.uid(); new.audit_at := now();
+    new.audit_name := case when public.moc_role() = 'owner' then 'مشرف القطاع'
+                           else coalesce(auth.jwt()->'user_metadata'->>'username', 'فريق التدقيق') end;
   end if;
   if public.moc_role() = 'moc_auditor' and tg_op = 'UPDATE' then
     new.nid := old.nid; new.phone := old.phone; new.day := old.day;
@@ -96,18 +99,23 @@ grant select on public.moc_counts to anon, authenticated;
 
 notify pgrst, 'reload schema';
 
--- 4) حسابات فريق التدقيق (الدخول من المنصة باختيار «فريق التدقيق» + كلمة المرور)
-create temp table if not exists moc_audit_creds(account text, password text);
+-- 4) حسابات فريق التدقيق (الدخول من المنصة باختيار «فريق التدقيق» + اسم المستخدم + كلمة المرور)
+-- حذف الحسابات المؤقتة السابقة (moc-audit1..3) إن وُجدت
+delete from auth.identities where user_id in (select id from auth.users where email like 'moc-audit_@sh-north.example');
+delete from auth.users where email like 'moc-audit_@sh-north.example';
+
+create temp table if not exists moc_audit_creds(username text, password text);
 truncate moc_audit_creds;
 do $$
 declare
+  users text[] := array['FAlzhavi','amfaqeeh','aaboeash'];
   alpha text := 'abcdefghjkmnpqrstuvwxyz23456789';
   i int; j int; em text; pw text; uid uuid;
 begin
-  for i in 1..3 loop
-    em := 'moc-audit'||i||'@sh-north.example';
+  for i in 1..array_length(users,1) loop
+    em := lower(users[i])||'@audit.sh-north.example';
     if exists (select 1 from auth.users where email = em) then
-      insert into moc_audit_creds values ('فريق التدقيق '||i, '(موجود مسبقاً - لم تتغير)');
+      insert into moc_audit_creds values (users[i], '(موجود مسبقاً - لم تتغير)');
       continue;
     end if;
     pw := '';
@@ -121,11 +129,11 @@ begin
       values ('00000000-0000-0000-0000-000000000000',uid,'authenticated','authenticated',em,
         extensions.crypt(pw, extensions.gen_salt('bf')),now(),
         jsonb_build_object('provider','email','providers',jsonb_build_array('email'),'role','moc_auditor'),
-        jsonb_build_object('team','audit'),now(),now(),'','','','');
+        jsonb_build_object('username',users[i]),now(),now(),'','','','');
     insert into auth.identities (id,user_id,provider_id,identity_data,provider,last_sign_in_at,created_at,updated_at)
       values (gen_random_uuid(),uid,uid::text,jsonb_build_object('sub',uid::text,'email',em,'email_verified',true),'email',now(),now(),now());
-    insert into moc_audit_creds values ('فريق التدقيق '||i, pw);
+    insert into moc_audit_creds values (users[i], pw);
   end loop;
 end $$;
 
-select account as "الحساب", password as "كلمة المرور" from moc_audit_creds order by account;
+select username as "اسم المستخدم", password as "كلمة المرور" from moc_audit_creds order by username;
