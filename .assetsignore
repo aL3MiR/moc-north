@@ -1,0 +1,8 @@
+.git
+.wrangler
+node_modules
+wrangler.jsonc
+.gitignore
+.assetsignore
+README.md
+moc-setup.sql
