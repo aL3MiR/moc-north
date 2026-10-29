@@ -296,11 +296,6 @@ details.adm summary{font-family:var(--f-display);font-weight:700;font-size:20px;
     <div class="stamp"><span id="stamp">جارٍ تحميل البيانات…</span><span id="stamp2"></span></div>
   </header>
   <div id="remind"></div>
-  <a class="extlink" href="https://forms.gle/8PSjDGbmY4XRNSGx7" target="_blank" rel="noopener noreferrer">
-    <span class="ico" aria-hidden="true"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6a1 1 0 0 1 1 1v1h2a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h2V4a1 1 0 0 1 1-1z"/><path d="M9 12l2 2 4-4"/></svg></span>
-    <span class="txt"><b>رابط إدخال الفحوصات اليومي</b><small>لجميع المراكز في الدوام الممتد، بالإضافة إلى يومي الجمعة والسبت</small></span>
-    <span class="go">فتح النموذج ←</span>
-  </a>
 
   <section aria-labelledby="h-pw">
     <h2 id="h-pw">المسارات الوطنية</h2>
@@ -839,6 +834,10 @@ function refreshCenters(force){
     <div class="strip"><div style="grid-column:span 2"><span class="lb">مدير المركز:</span><b>${esc(e.c.manager || "—")}</b></div>
       <div><span class="lb">أيام الرصد منذ ${minDate()}</span><b class="num">${e.days.size}</b></div>
       <div class="term">${dayRec(e.c.id, TODAY) ? "رصد منجز اليوم ✓" : "لم يرصد منجز اليوم"}</div></div>
+    ${e.c.id === "c16" ? `<a class="extlink" href="https://forms.gle/8PSjDGbmY4XRNSGx7" target="_blank" rel="noopener noreferrer">
+      <span class="ico" aria-hidden="true"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6a1 1 0 0 1 1 1v1h2a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h2V4a1 1 0 0 1 1-1z"/><path d="M9 12l2 2 4-4"/></svg></span>
+      <span class="txt"><b>رابط إدخال الفحوصات اليومي</b><small>يخص مركز بيش فقط</small></span>
+      <span class="go">فتح النموذج ←</span></a>` : ""}
     <h2>مؤشر الإنجاز لكل مسار</h2>
     <div class="kpis"><div class="kpi main"><span class="k">الإنجاز العام للمركز</span><span class="v"><span class="num">${pf(e.overall)}</span></span><span class="s">متوسط المسارات المفعّلة</span></div>${PW.map(p => tile(p, e.pw[p.k])).join("")}</div>
     <h2>مقارنة المركز بالقطاع</h2><div class="scroll"><table style="min-width:520px"><thead><tr><th>المسار</th><th>المركز</th><th>متوسط القطاع</th><th>الفرق</th></tr></thead><tbody>${PW.map(p => {
