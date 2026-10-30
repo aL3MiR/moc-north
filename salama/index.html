@@ -577,13 +577,13 @@ function renderHeader(){
     $("foot-txt").textContent = `المسارات الوطنية لنموذج الرعاية الصحية ٢٠٢٦ • ${cfg.salama.full}`;
     const sm = S.summary;
     $("strip").innerHTML = `
-      <div><span class="lb">مديرة إدارة المراكز الصحية بالقطاع الشمالي:</span><b>${esc(cfg.director)}</b></div>
+      <div><span class="lb">مديرة شؤون المراكز الصحية بالقطاع الشمالي:</span><b>${esc(cfg.director)}</b></div>
       <div><span class="lb">مديرة ${esc(cfg.salama.full)}:</span><b>${esc(c?.manager || "—")}</b></div>
       <div class="term"><span class="lb">العام</span><b class="num">٢٠٢٦</b></div>`;
   } else {
     const active = centers().length;
     $("strip").innerHTML = `
-      <div style="grid-column:span 2"><span class="lb">مديرة إدارة المراكز الصحية بالقطاع الشمالي:</span><b>${esc(cfg.director)}</b></div>
+      <div style="grid-column:span 2"><span class="lb">مديرة شؤون المراكز الصحية بالقطاع الشمالي:</span><b>${esc(cfg.director)}</b></div>
       <div><span class="lb">عدد المراكز الصحية بالقطاع الشمالي</span><b class="num">${active}</b></div>
       <div><span class="lb">المسارات الوطنية</span><b class="num">٦</b></div>
       <div class="term"><span class="lb">العام</span><b class="num">٢٠٢٦</b></div>`;
@@ -1144,7 +1144,7 @@ function renderAdmin(){
     ${PW.map(p => `<td><input type="number" min="0" id="a-t-${c.id}-${p.k}" data-c="${c.id}" data-k="tgt" data-p="${p.k}" value="${d.targets?.[c.id]?.[p.k] ?? ""}" aria-label="مستهدف ${esc(c.name)} — ${p.name}"></td>`).join("")}</tr>`).join("");
   $("adm-body").innerHTML = `
     <div class="adm grid2">
-      <div class="field"><label for="a-dir">مديرة إدارة المراكز الصحية بالقطاع</label><input class="in" type="text" id="a-dir" value="${esc(d.director)}"></div>
+      <div class="field"><label for="a-dir">مديرة شؤون المراكز الصحية بالقطاع</label><input class="in" type="text" id="a-dir" value="${esc(d.director)}"></div>
       <div class="field"><label for="a-rt">عنوان التذكير</label><input class="in" type="text" id="a-rt" value="${esc(d.reminder?.title)}"><label style="font-weight:500"><input type="checkbox" id="a-ra" ${d.reminder?.active?"checked":""}> إظهار التذكير</label></div>
     </div>
     <div class="field" style="margin-bottom:12px"><label for="a-rl">بنود التذكير (سطر لكل بند)</label><textarea id="a-rl">${esc((d.reminder?.lines||[]).join("\n"))}</textarea></div>
