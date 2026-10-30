@@ -569,7 +569,7 @@ function renderHeader(){
   const cfg = S.cfg, now = new Date();
   $("stamp").textContent = `${greg.format(now)} · ${hijri.format(now)}`;
   $("stamp2").textContent = MODE === "salama"
-    ? (EXT ? SYNC_NOTE : S.summary?.asOf ? `آخر مزامنة مع منصة القطاع: ${new Date(S.summary.asOf).toLocaleString("ar-SA-u-nu-latn",{dateStyle:"medium",timeStyle:"short"})}` : "المزامنة مع منصة القطاع تتم تلقائياً عدة مرات يومياً")
+    ? (EXT ? "" : S.summary?.asOf ? `آخر مزامنة مع منصة القطاع: ${new Date(S.summary.asOf).toLocaleString("ar-SA-u-nu-latn",{dateStyle:"medium",timeStyle:"short"})}` : "المزامنة مع منصة القطاع تتم تلقائياً عدة مرات يومياً")
     : `الرصيد الافتتاحي حتى ${cfg.baselineDate} · يُضاف إليه الرصد اليومي`;
   if (MODE === "salama"){
     const c = centerById(cfg.salama.id);
