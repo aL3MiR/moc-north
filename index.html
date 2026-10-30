@@ -565,6 +565,8 @@ function evalCenter(c){
     res.pw[p.k] = { on, t, ach, done, pct, comp, contact, match:e.m || 0, dailyA:e.a || 0, matchRate, matched, unmatched, pending };
   }
   const ps = PW.map(p => res.pw[p.k].pct).filter(v => v != null);
+  res.posPct = REC && isOn(c, "col") ? posOf(c.id).pct : null;
+  if (res.posPct != null) ps.push(res.posPct);
   res.overall = ps.length ? ps.reduce((s,v) => s + Math.min(v,1.5), 0) / ps.length : null;
   return res;
 }
@@ -668,7 +670,7 @@ function render(){
   if (MODE === "salama"){
     const me = evs.find(e => e.c.id === S.cfg.salama.id);
     h += `<h2>مؤشر الإنجاز لكل مسار — ${esc(me.c.name)}</h2><p class="sub">النسبة = المحقق ÷ المستهدف.</p>`;
-    h += `<div class="kpis"><div class="kpi main"><span class="k">الإنجاز العام للمركز</span><span class="v"><span class="num">${pf(me.overall)}</span></span><span class="s">متوسط المسارات المفعّلة</span></div>${PW.map(p => tile(p, me.pw[p.k])).join("")}</div>`;
+    h += `<div class="kpis"><div class="kpi main"><span class="k">الإنجاز العام للمركز</span><span class="v"><span class="num">${pf(me.overall)}</span></span><span class="s">متوسط المسارات المفعّلة${REC ? " ومؤشر إتمام مسار الحالات الإيجابية" : ""}</span></div>${PW.map(p => tile(p, me.pw[p.k])).join("")}</div>`;
     h += `<h2>مقارنة المركز بالقطاع</h2><div class="scroll"><table style="min-width:560px"><thead><tr><th>المسار</th><th>المركز</th><th>متوسط القطاع</th><th>الفرق</th></tr></thead><tbody>${PW.map(p => {
       const a = me.pw[p.k].pct, b = S.summary?.pw?.[p.k] ?? null, d = a != null && b != null ? a - b : null;
       return `<tr><td class="l">${p.name}</td><td class="${cls(a)}">${pf(a)}</td><td class="${cls(b)}">${pf(b)}</td><td style="color:${d == null ? "var(--muted)" : d >= 0 ? "var(--ok)" : "var(--bad)"};font-weight:700"><span class="num">${d == null ? "—" : (d >= 0 ? "+" : "") + Math.round(d*100) + "%"}</span></td></tr>`;
@@ -682,8 +684,10 @@ function render(){
       <span class="go">عرض المراكز ←</span></button>`;
     h += `<h2>مؤشر الإنجاز لكل مسار — القطاع الشمالي</h2><p class="sub">مجموع المراكز المفعّل فيها المسار. النسبة = مجموع المحقق ÷ مجموع المستهدف.</p>`;
     const sp = PW.map(p => tot[p.k].pct).filter(v => v != null);
+    const spos = REC ? posTotals(centers().filter(c => isOn(c, "col")).map(c => c.id)).pct : null;
+    if (spos != null) sp.push(spos);
     const so = sp.length ? sp.reduce((s,v)=>s+Math.min(v,1.5),0)/sp.length : null;
-    h += `<div class="kpis"><div class="kpi main"><span class="k">إنجاز القطاع</span><span class="v"><span class="num">${pf(so)}</span></span><span class="s">متوسط المسارات</span></div>${PW.map(p => tile(p, {...tot[p.k], on:tot[p.k].any})).join("")}</div>`;
+    h += `<div class="kpis"><div class="kpi main"><span class="k">إنجاز القطاع</span><span class="v"><span class="num">${pf(so)}</span></span><span class="s">متوسط المسارات${REC ? " ومؤشر إتمام مسار الحالات الإيجابية" : ""}</span></div>${PW.map(p => tile(p, {...tot[p.k], on:tot[p.k].any})).join("")}</div>`;
     const missing = centers().filter(c => !reportedOn(c.id, TODAY));
     h += `<h2>الرصد اليومي — ${greg.format(new Date())}</h2><p class="sub">المراكز التي لم ترصد منجز اليوم (${missing.length} من ${centers().length}). اضغط على المركز لفتح لوحته.</p><div class="missing">${missing.length ? missing.map(c => `<button type="button" data-open-c="${esc(c.id)}">${esc(c.name)}</button>`).join("") : `<span class="ok">جميع المراكز رصدت منجز اليوم</span>`}</div>`;
   }
@@ -1256,7 +1260,7 @@ function refreshCenters(force){
       <span class="txt"><b>رابط إدخال الفحوصات اليومي</b><small>يخص مركز بيش فقط</small></span>
       <span class="go">فتح النموذج ←</span></a>` : ""}
     <h2>مؤشر الإنجاز لكل مسار</h2>
-    <div class="kpis"><div class="kpi main"><span class="k">الإنجاز العام للمركز</span><span class="v"><span class="num">${pf(e.overall)}</span></span><span class="s">متوسط المسارات المفعّلة</span></div>${PW.map(p => tile(p, e.pw[p.k])).join("")}</div>
+    <div class="kpis"><div class="kpi main"><span class="k">الإنجاز العام للمركز</span><span class="v"><span class="num">${pf(e.overall)}</span></span><span class="s">متوسط المسارات المفعّلة${REC ? " ومؤشر إتمام مسار الحالات الإيجابية" : ""}</span></div>${PW.map(p => tile(p, e.pw[p.k])).join("")}</div>
     <h2>مقارنة المركز بالقطاع</h2><div class="scroll"><table style="min-width:520px"><thead><tr><th>المسار</th><th>المركز</th><th>متوسط القطاع</th><th>الفرق</th></tr></thead><tbody>${PW.map(p => {
       const a = e.pw[p.k].on ? e.pw[p.k].pct : null, b = tot[p.k].pct, d = a != null && b != null ? a - b : null;
       return e.pw[p.k].on ? `<tr><td class="l">${p.name}</td><td class="${cls(a)}">${pf(a)}</td><td class="${cls(b)}">${pf(b)}</td><td style="color:${d == null ? "var(--muted)" : d >= 0 ? "var(--ok)" : "var(--bad)"};font-weight:700"><span class="num">${d == null ? "—" : (d >= 0 ? "+" : "") + Math.round(d*100) + "%"}</span></td></tr>`
@@ -1357,7 +1361,7 @@ function renderAdmin(){
     S.cfg = snap.data(); S.draft = null; render();
   }, () => toast("انقطع الاتصال بالبيانات. أعد تحميل الصفحة."));
   if (MODE === "salama" && !EXT) db.doc("summary/sector").onSnapshot(snap => { S.summary = snap.exists ? snap.data() : null; if (S.cfg) render(); }, () => {});
-  if (window.MOCPOS) window.MOCPOS.onCounts(rows => { setPosCounts(rows); if (S.cfg && S.openPw === "col") renderPos(false, true); }, () => {});
+  if (window.MOCPOS) window.MOCPOS.onCounts(rows => { setPosCounts(rows); if (S.cfg && !(document.activeElement && document.activeElement.closest?.("#adm-body, .posform, #ps-add"))) render(); }, () => {});
   if (REC) window.MOCREC.onCounts(rows => { setCounts(rows); if (S.cfg && !(document.activeElement && document.activeElement.closest?.("#adm-body"))) render(); }, () => {});
   db.collection("entries").onSnapshot(snap => {
     S.entries = new Map(snap.docs.map(d => [d.id, d.data()]));
