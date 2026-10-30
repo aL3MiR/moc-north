@@ -420,7 +420,6 @@ const PW = [
    crit:["غير مرضع","غير حامل","لم تُجرِ الماموجرام خلال آخر سنة","غير مشخّصة مسبقاً"],
    aim:"اكتشاف التغيرات غير الطبيعية في الثدي قبل ظهور الأعراض. تذكر وزارة الصحة أن الكشف المبكر يرفع نسبة الشفاء لأكثر من ٩٥٪ ويقلل الوفيات.",
    how:"التحويل للماموجرام على نظام موعد، ثم إضافة البيانات لمنصة المسار، وإدخال الأوردر في رقيم، مع التركيز على جودة الإحالة. لا تُحوَّل السيدة في حالة الرفض أو دون علمها، ويُستخدم التحويل الورقي عند تعطل النظام.",
-   extra:"المستهدف شهري. يُضاف كل تحويل بسجله المدني ورقم الجوال، ويُحتسب «مكتملاً» إذا تم التحويل على نظام موعد، وإضافة البيانات لمنصة المسار، وإدخال الأوردر في رقيم. النسبة = التحويلات المكتملة هذا الشهر ÷ المستهدف الشهري.",
    monthly:true, mammo:true,
    fields:[["c","عدد التواصل"]] }
 ];
@@ -730,17 +729,18 @@ function refreshPw(force){
     m = `<h3>إنجاز المركز — ${p.name}</h3><div class="kpis" style="margin-top:6px">${tile(p, x)}
       <div class="kpi"><span class="k">متوسط القطاع</span><span class="v ${vcls(sp)}"><span class="num">${pf(sp)}</span></span>${bar(sp)}<span class="s">${EXT ? "من بيانات جميع مراكز القطاع" : "يُحدَّث تلقائياً من منصة القطاع"}</span></div></div>`;
   } else {
-    const on = evs.filter(e => e.pw[p.k].on).sort((a,b) => (b.pw[p.k].pct ?? -1) - (a.pw[p.k].pct ?? -1));
-    const off = evs.filter(e => !e.pw[p.k].on);
-    const x = tot[p.k];
+    const mine = e => !S.myCenter || e.c.id === S.myCenter;
+    const on = evs.filter(e => e.pw[p.k].on && mine(e)).sort((a,b) => (b.pw[p.k].pct ?? -1) - (a.pw[p.k].pct ?? -1));
+    const off = evs.filter(e => !e.pw[p.k].on && mine(e));
+    const x = S.myCenter ? { ...(evs.find(e => e.c.id === S.myCenter)?.pw[p.k] || {}), any:true } : tot[p.k];
     const totCells = p.k === "col" ? `<td>${n(x.t)}</td><td>${n(x.ach)}</td><td>${n(x.done)}</td><td class="${cls(x.pct)}">${pf(x.pct)}</td><td class="${cls(x.comp)}">${pf(x.comp)}</td>`
       : `<td>${x.t ? n(x.t) : "—"}</td>${p.monthly ? `<td>${n(x.done)}</td>` : ""}<td>${n(x.ach)}</td><td class="${cls(x.pct)}">${pf(x.pct)}</td>`;
-    m = `<h3>خريطة إنجاز المراكز — ${p.name}</h3>
+    m = `<h3>${S.myCenter ? `إنجاز مركز ${esc(centerById(S.myCenter)?.name || "")}` : "خريطة إنجاز المراكز"} — ${p.name}</h3>
       <div class="kpis" style="margin-block:6px 10px">${tile(p, {...x, on:x.any})}</div>
       <div class="scroll"><table style="min-width:900px"><thead><tr><th>م</th><th>المركز</th><th>مدير المركز</th>${pwHead(p)}<th>الإنجاز</th>${exHead(p)}</tr></thead><tbody>
       ${pinSalama(on, e => e.pw[p.k].pct).map(({e}, i) => { const y = e.pw[p.k]; return `<tr${e.c.id === S.cfg.salama.id ? ' class="me"' : ""}><td>${i + 1}</td><td class="l">${esc(e.c.name)}</td><td class="m">${esc(e.c.manager || "—")}</td>${pwCells(p, y)}<td>${bar(y.pct)}</td>${exCells(p, y)}</tr>`; }).join("")}
       ${off.map(e => `<tr><td></td><td class="l">${esc(e.c.name)}</td><td class="m">${esc(e.c.manager || "—")}</td><td class="off" colspan="${(p.k === "col" ? 5 : p.monthly ? 4 : 3) + 1 + exCount(p)}">غير مفعّل</td></tr>`).join("")}
-      <tr class="tot"><td></td><td class="l" style="color:inherit" colspan="2">المجموع</td>${totCells}<td></td>${exCells(p, x)}</tr>
+      ${S.myCenter ? "" : `<tr class="tot"><td></td><td class="l" style="color:inherit" colspan="2">المجموع</td>${totCells}<td></td>${exCells(p, x)}</tr>`}
       </tbody></table></div>
       <div class="legend"><span><i style="background:var(--ok-bg)"></i>٩٠٪ فأكثر</span><span><i style="background:var(--warn-bg)"></i>من ٧٠ إلى ٨٩٪</span><span><i style="background:var(--bad-bg)"></i>أقل من ٧٠٪</span></div>`;
   }
@@ -1013,7 +1013,7 @@ async function loadPos(force){
   if (S.openPw === "col") renderPos(false);
 }
 function posIndicatorHtml(){
-  const ids = MODE === "salama" ? [S.cfg.salama.id] : centers().filter(c => isOn(c, "col")).map(c => c.id);
+  const ids = MODE === "salama" ? [S.cfg.salama.id] : S.myCenter ? [S.myCenter] : centers().filter(c => isOn(c, "col")).map(c => c.id);
   const t = posTotals(ids);
   let h = `<h3>المؤشر الثاني — الحالات الإيجابية (FIT)</h3>
     <p class="recnote">نسبة إتمام المسار = (المحوّلون لمستشفى الأمير محمد بن ناصر + الرفض الموثّق بنموذج الرفض) ÷ الحالات الإيجابية. المستهدف ١٠٠٪.</p>
@@ -1023,7 +1023,7 @@ function posIndicatorHtml(){
       <div class="kpi"><span class="k">محوّل للمستشفى</span><span class="v g"><span class="num">${n(t.referred)}</span></span><span class="s">مستشفى الأمير محمد بن ناصر</span></div>
       <div class="kpi"><span class="k">رفض موثّق</span><span class="v r"><span class="num">${n(t.refused)}</span></span><span class="s">بنموذج الرفض</span></div>
     </div>`;
-  if (MODE !== "salama"){
+  if (MODE !== "salama" && !S.myCenter){
     const rows = centers().filter(c => isOn(c, "col")).map(c => ({ c, x:posOf(c.id) })).filter(r => r.x.n);
     h += rows.length ? `<div class="scroll" style="margin-top:10px"><table style="min-width:640px"><thead><tr><th>المركز</th><th>الحالات الإيجابية</th><th>محوّل للمستشفى</th><th>رفض موثّق</th><th>قيد المتابعة</th><th>إتمام المسار</th></tr></thead><tbody>${rows.map(({c, x}) => `<tr${c.id === S.cfg.salama.id ? ' class="me"' : ""}><td class="l">${esc(c.name)}</td><td>${n(x.n)}</td><td>${n(x.referred)}</td><td>${n(x.refused)}</td><td class="${x.open ? "cw" : "cn"}">${n(x.open)}</td><td class="${cls(x.pct)}">${pf(x.pct)}</td></tr>`).join("")}</tbody></table></div>`
       : `<p class="muted" style="margin-top:8px">لا توجد حالات إيجابية مسجلة حتى الآن.</p>`;
