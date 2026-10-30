@@ -13,7 +13,8 @@ function mgr(){var m=meta();return m.role==='moc_manager'&&/^c\d\d$/.test(m.cent
 function cen(){return mgr()?meta().center:''}
 function aud(){return meta().role==='moc_auditor'}
 function uname(){return (claims().user_metadata||{}).username||''}
-function role(){return owner()?'owner':aud()?'moc_auditor':mgr()?'moc_manager':''}
+function coordr(){return meta().role==='moc_coordinator'}
+function role(){return owner()?'owner':aud()?'moc_auditor':coordr()?'moc_coordinator':mgr()?'moc_manager':''}
 function save(){try{if(sess)localStorage.setItem(SK,JSON.stringify(sess));else localStorage.removeItem(SK)}catch(e){}}
 async function refresh(){if(!sess||!sess.refresh_token)return;try{var r=await fetch(URL_+'/auth/v1/token?grant_type=refresh_token',{method:'POST',headers:{apikey:KEY,'Content-Type':'application/json'},body:JSON.stringify({refresh_token:sess.refresh_token})});sess=r.ok?await r.json():null;save()}catch(e){}}
 async function ensure(){if(sess&&sess.access_token&&jwt(sess.access_token).exp*1000<Date.now()+60000)await refresh()}
@@ -49,10 +50,17 @@ window.MOCREC={
  update:async function(id,patch){var r=await api('moc_records?id=eq.'+q(id),{method:'PATCH',headers:{Prefer:'return=representation'},body:JSON.stringify(patch)});if(!r||!r.length){var e=new Error('denied');e.code=403;throw e}kick();return r[0]},
  remove:async function(id){var r=await api('moc_records?id=eq.'+q(id),{method:'DELETE',headers:{Prefer:'return=representation'}});if(!r||!r.length){var e=new Error('denied');e.code=403;throw e}kick()}
 };
+window.MOCPOS={
+ onCounts:function(ok,err){return poll(async function(){var rows=await api('moc_pos_counts?select=center,n,referred,refused,open');return {raw:rows,snap:rows}},ok,err)},
+ list:async function(o){o=o||{};var p='moc_positive?select=*';if(o.center)p+='&center=eq.'+q(o.center);p+='&order=result_date.desc,created_at.desc&limit=2000';return await api(p)},
+ add:async function(row){var r=await api('moc_positive',{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify(row)});kick();return r[0]},
+ update:async function(id,patch){var r=await api('moc_positive?id=eq.'+q(id),{method:'PATCH',headers:{Prefer:'return=representation'},body:JSON.stringify(patch)});if(!r||!r.length){var e=new Error('denied');e.code=403;throw e}kick();return r[0]},
+ remove:async function(id){var r=await api('moc_positive?id=eq.'+q(id),{method:'DELETE',headers:{Prefer:'return=representation'}});if(!r||!r.length){var e=new Error('denied');e.code=403;throw e}kick()}
+};
 window.claude={use:async function(n){if(n==='db')return DB;if(n==='user')return USER;if(n==='downloads')return DL;return null}};
 var nameOf=function(id){for(var i=0;i<CN.length;i++)if(CN[i][0]===id)return CN[i][1];return id};
 window.MOCSB={logout:function(){sess=null;save();location.reload()},
- login:async function(email,pw){var r=await fetch(URL_+'/auth/v1/token?grant_type=password',{method:'POST',headers:{apikey:KEY,'Content-Type':'application/json'},body:JSON.stringify({email:email,password:pw})});if(!r.ok)throw new Error('bad');sess=await r.json();if(!owner()&&!mgr()&&!aud()){sess=null;throw new Error('notallowed')}save();location.reload()}};
+ login:async function(email,pw){var r=await fetch(URL_+'/auth/v1/token?grant_type=password',{method:'POST',headers:{apikey:KEY,'Content-Type':'application/json'},body:JSON.stringify({email:email,password:pw})});if(!r.ok)throw new Error('bad');sess=await r.json();if(!owner()&&!mgr()&&!aud()&&!coordr()){sess=null;throw new Error('notallowed')}save();location.reload()}};
 function ui(){var b=document.createElement('button');b.type='button';
  b.textContent=owner()?'خروج المشرف':aud()?'خروج — '+(uname()||'فريق التدقيق'):mgr()?'خروج — مركز '+nameOf(cen()):'تسجيل الدخول';
  b.style.cssText='position:fixed;bottom:calc(10px + env(safe-area-inset-bottom,0px));left:10px;z-index:99;font-family:inherit;font-size:13px;padding:6px 13px;border-radius:16px;border:1px solid #9aa8b5;background:rgba(255,255,255,.92);color:#0F2C46;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.15)';
@@ -171,6 +179,8 @@ td.nid{font-family:ui-monospace,Menlo,monospace;direction:ltr;unicode-bidi:isola
 .btn.del{background:transparent;color:var(--bad);border-color:var(--bad);min-height:30px;padding:2px 10px;font-size:12.5px}
 .pwcell{display:grid;gap:6px;align-content:start;min-width:0}
 .recbox{border:1.5px dashed var(--line);border-radius:12px;padding:10px 12px;background:var(--bg);display:grid;gap:6px}
+.posform{display:grid;gap:10px;padding:6px 2px}
+.posform .field label{font-size:13px}
 .recbox b{font-family:var(--f-display);font-size:17px;color:var(--navy)}.pwp-sec ul{margin:0;padding-inline-start:20px;display:grid;gap:3px}
 .muted{color:var(--muted)}
 .pw{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px 16px;display:grid;gap:8px;align-content:start;min-width:0;box-shadow:var(--shadow)}
@@ -397,7 +407,8 @@ const PW = [
    crit:["من عمر ٤٥ إلى ٧٥ سنة","غير مشخّص مسبقاً"],
    aim:"اكتشاف سرطان القولون والمستقيم والزوائد السابقة له في مرحلة مبكرة قابلة للعلاج. توضح وزارة الصحة أن أغلب الحالات تظهر بعد عمر ٤٥ سنة، وأن الخدمة متاحة في مراكز الرعاية الأولية للفئة من ٤٥ إلى ٧٥ سنة.",
    how:"طلب تحليل الدم الخفي في البراز (FIT) للفئة المستهدفة، ومتابعة اكتمال النتيجة، وإحالة الحالات الإيجابية لمنظار القولون.",
-   extra:"نسبة التغطية = طلبات التحاليل ÷ المستهدف · نسبة الالتزام = النتائج المكتملة ÷ طلبات التحاليل",
+   extra:"المؤشر الأول (شهري): نسبة التغطية = طلبات التحاليل هذا الشهر ÷ المستهدف الشهري للمركز (حسب توزيع الكتات والفئة العمرية والموانع)، ونسبة الالتزام = النتائج المكتملة ÷ طلبات التحاليل. يبدأ العدّ من الصفر مع كل شهر. المؤشر الثاني: إتمام مسار الحالات الإيجابية.",
+   colMonthly:true,
    blocks:[
     {t:"شروط إجراء FIT (عوامل خطورة متوسطة) — يجب أن تكون جميعها «نعم»", items:["بدون أعراض","الفئة المستهدفة من ٤٥ إلى ٧٥ سنة","لا يوجد تاريخ شخصي أو عائلي لسرطان القولون والمستقيم أو مرض التهاب الأمعاء"]},
     {t:"موانع طبية — يكفي وجود واحد منها لتجنب إجراء الفحص", items:["نزيف من فتحة الشرج (مثل البواسير)","التهاب بمجرى البول (دم أو صديد بالبول)","منظار قولون خلال آخر ١٠ سنوات","فترة الحيض لدى السيدات","أعراض سريرية: تُحال الحالة للتقييم والعلاج المتخصص خارج نطاق مسار الكشف المبكر"]},
@@ -454,9 +465,10 @@ function openPw(k){
     ${(p.blocks||[]).map(b => `<div class="pwp-sec"><h3>${b.t}</h3><ul>${b.items.map(i => `<li>${i}</li>`).join("")}</ul></div>`).join("")}
     ${p.extra ? `<div class="pwp-sec"><h3>المؤشرات</h3><p>${p.extra}</p></div>` : ""}
     ${S.myCenter ? `<div class="pwp-sec" id="pwp-entry"></div><div class="pwp-sec" id="pwp-map"></div>` : `<div class="pwp-sec" id="pwp-map"></div><div class="pwp-sec" id="pwp-entry"></div>`}
+    <div class="pwp-sec" id="pwp-pos" hidden></div>
     <div class="pwp-sec" id="pwp-audit" hidden></div>
     <div class="pwp-sec"><h3>النماذج</h3>${forms ? `<div class="forms-grid">${forms}</div>` : `<p class="muted">لا توجد نماذج مرفقة لهذا المسار حالياً.</p>`}</div>`;
-  S.openPw = k; S.pe.dirty = false;
+  S.openPw = k; S.pe.dirty = false; S.pe.openPos = null;
   refreshPw(true);
   lastFocus = document.activeElement;
   $("pwpage").hidden = false; document.body.style.overflow = "hidden";
@@ -475,6 +487,7 @@ S.cp.view = store.get("moc.cpv") === "table" ? "table" : "tiles";
 
 const EXT = !!window.MOC_EXTERNAL;
 const REC = !!window.MOCREC;
+S.pos = {}; S.pl = { rows:null, loading:false }; S.pf = { center:"", status:"open" };
 S.cnt = {}; S.cntDays = new Set(); S.cntDay = new Map(); S.role = ""; S.rl = { key:"", rows:null, loading:false }; S.al = { k:"", rows:null, loading:false }; S.af = { center:"", status:"pending" };
 const AUD = { match:"مطابق", age:"غير مطابق للفئة العمرية", diag:"غير مطابق — مشخّص مسبقاً", recent:"غير مطابق — عمل فحصاً في أقل من سنة" };
 const canRead = cid => S.role === "owner" || S.role === "moc_auditor" || (S.role === "moc_manager" && S.myCenter === cid);
@@ -515,6 +528,7 @@ const tgt = (cid, k) => { const v = S.cfg.targets?.[cid]?.[k]; return typeof v =
 const CUR = TODAY.slice(0,7);
 function sumEntries(cid){
   const out = {}, mon = {}; const days = new Set();
+  const cb = S.cfg.colBase, colCut = cb && cb.month === CUR ? cb.date : "";
   for (const doc of S.entries.values()){
     if (doc.center !== cid) continue;
     for (const [dd, rec] of Object.entries(doc.days || {})){
@@ -523,7 +537,8 @@ function sumEntries(cid){
         const r = rec[p.k]; if (!r) continue;
         const o = (out[p.k] ||= {a:0,r:0,e:0,c:0,m:0});
         o.a += +r.a || 0; o.r += +r.r || 0; o.e += +r.e || 0; o.c += +r.c || 0; o.m += +r.m || 0;
-        if (`${doc.year}-${pad(doc.month)}` === CUR){ const q = (mon[p.k] ||= {a:0,e:0,c:0}); q.a += +r.a || 0; q.e += +r.e || 0; q.c += +r.c || 0; }
+        if (`${doc.year}-${pad(doc.month)}` === CUR){ const q = (mon[p.k] ||= {a:0,e:0,c:0,r:0,ca:0,cr:0}); q.a += +r.a || 0; q.e += +r.e || 0; q.c += +r.c || 0; q.r += +r.r || 0;
+          if (`${doc.year}-${pad(doc.month)}-${dd}` > colCut) { q.ca += +r.a || 0; q.cr += +r.r || 0; } }
       }
     }
   }
@@ -538,7 +553,8 @@ function evalCenter(c){
     const on = isOn(c, p.k), t = tgt(c.id, p.k), e = sums[p.k] || {a:0,r:0,c:0,m:0};
     let ach, done = null, contact = e.c || 0, matched = 0, unmatched = 0, pending = 0, matchRate = e.a ? e.m / e.a : null;
     const k = S.cnt[c.id]?.[p.k] || {};
-    if (p.k === "col"){ ach = (base.col?.req || 0) + e.a; done = (base.col?.res || 0) + e.r; }
+    if (p.k === "col" && S.cfg.colBase){ const cb = S.cfg.colBase, b = cb.month === CUR ? (cb.c?.[c.id] || {}) : {}; ach = (b.req || 0) + (mon.col?.ca || 0); done = (b.res || 0) + (mon.col?.cr || 0); }
+    else if (p.k === "col"){ ach = (base.col?.req || 0) + e.a; done = (base.col?.res || 0) + e.r; }
     else if (REC && p.mammo){ ach = k.monthComplete || 0; done = k.monthN || 0; contact = mon[p.k]?.c || 0; }
     else if (p.monthly){ ach = mon[p.k]?.e || 0; done = mon[p.k]?.a || 0; }
     else if (REC && p.rec){ matched = k.matched || 0; unmatched = k.unmatched || 0; pending = k.pending || 0;
@@ -601,7 +617,7 @@ function tile(p, x, label){
   const main = p.monthly
     ? `<span class="s">التحويلات المكتملة هذا الشهر <b class="num">${n(x.ach)}</b> من المستهدف الشهري <b class="num">${n(x.t)}</b> · إجمالي المحولات <b class="num">${n(x.done)}</b></span>`
     : p.k === "col"
-    ? `<span class="s">التغطية: الطلبات <b class="num">${n(x.ach)}</b> من <b class="num">${n(x.t)}</b> · الالتزام <b class="num">${pf(x.comp)}</b></span>`
+    ? `<span class="s">${S.cfg.colBase ? "التغطية هذا الشهر" : "التغطية"}: الطلبات <b class="num">${n(x.ach)}</b> من <b class="num">${n(x.t)}</b> · الالتزام <b class="num">${pf(x.comp)}</b></span>`
     : x.t ? `<span class="s">المحقق <b class="num">${n(x.ach)}</b> من المستهدف <b class="num">${n(x.t)}</b></span>` : `<span class="s">المحقق <b class="num">${n(x.ach)}</b> · لم يُحدد المستهدف بعد</span>`;
   return `<div class="kpi"><span class="k">${p.name}</span><span class="v ${vcls(pct)}"><span class="num">${pf(pct)}</span></span>
     <div class="meter"><i style="width:${Math.min(100,(pct||0)*100)}%;--c:${colorOf(pct)}"></i></div>${main}
@@ -617,7 +633,7 @@ function registerTable(evs, tot, highlight){
     return `<th colspan="${span}" class="grp-${p.k}">${p.name}</th>`;
   }).join("");
   const sub = PW.map(p => S.view === "cm" ? (p.rec ? "<th>مطابق</th><th>غير مطابق</th><th>بانتظار التدقيق</th>" : p.mammo ? "<th>المحولات</th><th>المكتملة</th><th>التواصل</th>" : "<th colspan=\"3\">—</th>")
-    : p.k === "col" ? "<th>المستهدف</th><th>طلبات التحاليل</th><th>النتائج المكتملة</th><th>نسبة التغطية</th><th>نسبة الالتزام</th>"
+    : p.k === "col" ? `<th>${S.cfg.colBase ? "المستهدف الشهري" : "المستهدف"}</th><th>طلبات التحاليل</th><th>النتائج المكتملة</th><th>نسبة التغطية</th><th>نسبة الالتزام</th>`
     : p.monthly ? "<th>المستهدف الشهري</th><th>المحولات</th><th>المكتملة</th><th>النسبة</th>" : "<th>المستهدف</th><th>المحقق</th><th>النسبة</th>").join("");
   const cells = (x, p) => {
     if (!x.on) return `<td class="off" colspan="${S.view === "cm" ? 3 : p.k === "col" ? 5 : p.monthly ? 4 : 3}">غير مفعّل</td>`;
@@ -690,7 +706,7 @@ function pwCells(p, x){
   return `<td>${x.t ?? "—"}</td><td>${n(x.ach)}</td><td class="${cls(x.pct)}">${pf(x.pct)}</td>`;
 }
 function pwHead(p){
-  if (p.k === "col") return "<th>المستهدف</th><th>طلبات التحاليل</th><th>النتائج المكتملة</th><th>نسبة التغطية</th><th>نسبة الالتزام</th>";
+  if (p.k === "col") return `<th>${S.cfg.colBase ? "المستهدف الشهري" : "المستهدف"}</th><th>طلبات التحاليل</th><th>النتائج المكتملة</th><th>نسبة التغطية</th><th>نسبة الالتزام</th>`;
   if (p.monthly) return "<th>المستهدف الشهري</th><th>المحولات</th><th>المكتملة</th><th>النسبة</th>";
   return "<th>المستهدف</th><th>المحقق</th><th>النسبة</th>";
 }
@@ -726,6 +742,7 @@ function refreshPw(force){
   }
   $("pwp-map").innerHTML = m;
   renderPwEntry(force);
+  if (p.k === "col") renderPos(force, !force);
 }
 function pwCenters(k){
   return centers().filter(c => isOn(c, k) && (MODE === "salama" ? c.id === S.cfg.salama.id : S.myCenter ? c.id === S.myCenter : true));
@@ -965,6 +982,158 @@ function renderAudit(p, force){
   }));
 }
 
+/* ---- colon: positive FIT cases (indicator 2) ---- */
+const isSectorTeam = () => ["owner","moc_auditor","moc_coordinator"].includes(S.role);
+const POS_DONE = r => r.hospital === true || r.refusal_form === true;
+function posStatus(r){
+  if (r.hospital) return ["g","محوّل للمستشفى"];
+  if (r.refusal_form) return ["r","رفض موثّق بنموذج الرفض"];
+  if (r.informed !== true) return ["w","بانتظار إبلاغ المريض"];
+  if (!r.decision) return ["w","بانتظار قرار المريض"];
+  if (r.decision === "accept") return ["w","موافق — بانتظار التحويل"];
+  if (!r.edu_result) return ["w","رفض — بانتظار التثقيف"];
+  if (r.edu_result === "accept") return ["w","وافق بعد التثقيف — بانتظار التحويل"];
+  if (!r.recontact_result) return (r.recontact_date && r.recontact_date <= TODAY) ? ["r","موعد إعادة التواصل حلّ"] : ["w","بانتظار إعادة التواصل"];
+  if (r.recontact_result === "accept") return ["w","وافق بعد إعادة التواصل — بانتظار التحويل"];
+  return ["w","رفض نهائي — بانتظار نموذج الرفض"];
+}
+function setPosCounts(rows){ const m = {}; for (const r of rows || []) m[r.center] = r; S.pos = m; }
+function posOf(cid){ const r = S.pos?.[cid] || { n:0, referred:0, refused:0, open:0 }; const done = r.referred + r.refused; return { ...r, done, pct: r.n ? done / r.n : null }; }
+function posTotals(cids){ let n = 0, referred = 0, refused = 0, open = 0; for (const c of cids){ const r = posOf(c); n += r.n; referred += r.referred; refused += r.refused; open += r.open; } const done = referred + refused; return { n, referred, refused, open, done, pct: n ? done / n : null }; }
+async function loadPos(force){
+  if (!window.MOCPOS || !(isSectorTeam() || S.role === "moc_manager")) { S.pl = { rows:null, loading:false }; return; }
+  if (!force && (S.pl.rows || S.pl.loading)) return;
+  S.pl = { rows:S.pl.rows, loading:true };
+  try { S.pl = { rows: await window.MOCPOS.list(S.role === "moc_manager" ? { center:S.myCenter } : {}), loading:false }; }
+  catch (e) { S.pl = { rows:[], loading:false }; }
+  if (S.openPw === "col") renderPos(false);
+}
+function posIndicatorHtml(){
+  const ids = MODE === "salama" ? [S.cfg.salama.id] : centers().filter(c => isOn(c, "col")).map(c => c.id);
+  const t = posTotals(ids);
+  let h = `<h3>المؤشر الثاني — الحالات الإيجابية (FIT)</h3>
+    <p class="recnote">نسبة إتمام المسار = (المحوّلون لمستشفى الأمير محمد بن ناصر + الرفض الموثّق بنموذج الرفض) ÷ الحالات الإيجابية. المستهدف ١٠٠٪.</p>
+    <div class="kpis" style="margin-top:6px">
+      <div class="kpi"><span class="k">إتمام المسار</span><span class="v ${vcls(t.pct)}"><span class="num">${pf(t.pct)}</span></span>${bar(t.pct)}<span class="s">${n(t.done)} من ${n(t.n)} حالة إيجابية</span></div>
+      <div class="kpi"><span class="k">الحالات الإيجابية</span><span class="v n"><span class="num">${n(t.n)}</span></span><span class="s">قيد المتابعة: <b class="num">${n(t.open)}</b></span></div>
+      <div class="kpi"><span class="k">محوّل للمستشفى</span><span class="v g"><span class="num">${n(t.referred)}</span></span><span class="s">مستشفى الأمير محمد بن ناصر</span></div>
+      <div class="kpi"><span class="k">رفض موثّق</span><span class="v r"><span class="num">${n(t.refused)}</span></span><span class="s">بنموذج الرفض</span></div>
+    </div>`;
+  if (MODE !== "salama"){
+    const rows = centers().filter(c => isOn(c, "col")).map(c => ({ c, x:posOf(c.id) })).filter(r => r.x.n);
+    h += rows.length ? `<div class="scroll" style="margin-top:10px"><table style="min-width:640px"><thead><tr><th>المركز</th><th>الحالات الإيجابية</th><th>محوّل للمستشفى</th><th>رفض موثّق</th><th>قيد المتابعة</th><th>إتمام المسار</th></tr></thead><tbody>${rows.map(({c, x}) => `<tr${c.id === S.cfg.salama.id ? ' class="me"' : ""}><td class="l">${esc(c.name)}</td><td>${n(x.n)}</td><td>${n(x.referred)}</td><td>${n(x.refused)}</td><td class="${x.open ? "cw" : "cn"}">${n(x.open)}</td><td class="${cls(x.pct)}">${pf(x.pct)}</td></tr>`).join("")}</tbody></table></div>`
+      : `<p class="muted" style="margin-top:8px">لا توجد حالات إيجابية مسجلة حتى الآن.</p>`;
+  }
+  return h;
+}
+const YN = (id, v, dis) => `<select class="in" id="${id}" ${dis}><option value="">—</option><option value="1" ${v === true ? "selected" : ""}>نعم</option><option value="0" ${v === false ? "selected" : ""}>لا</option></select>`;
+const AR = (id, v, dis) => `<select class="in" id="${id}" ${dis}><option value="">—</option><option value="accept" ${v === "accept" ? "selected" : ""}>موافق</option><option value="refuse" ${v === "refuse" ? "selected" : ""}>رافض</option></select>`;
+function posCaseForm(r){
+  const dis = isSectorTeam() ? "" : "disabled";
+  const f = (id, label, ctl, show = true) => show ? `<div class="field"><label for="${id}">${label}</label>${ctl}</div>` : "";
+  const ref = r.decision === "refuse", eduRef = ref && r.edu_result === "refuse";
+  const needConsentForm = (ref && r.edu_result === "accept") || (eduRef && r.recontact_result === "accept");
+  const canHospital = r.decision === "accept" || needConsentForm;
+  return `<div class="posform" data-pid="${esc(r.id)}">
+    <div class="recgrid">
+      ${f("ps-informed","١) تبليغ الطبيب للمريض بالنتيجة", YN("ps-informed", r.informed, dis))}
+      ${f("ps-decision","٢) قرار المريض", AR("ps-decision", r.decision, dis), r.informed === true)}
+      ${f("ps-consent_doc","توثيق الموافقة", YN("ps-consent_doc", r.consent_doc, dis), r.decision === "accept")}
+      ${f("ps-raqeem_refusal","٣) توثيق الرفض في رقيم", YN("ps-raqeem_refusal", r.raqeem_refusal, dis), ref)}
+      ${f("ps-educator","التحويل للمثقف الصحي", YN("ps-educator", r.educator, dis), ref)}
+      ${f("ps-edu_result","نتيجة التثقيف", AR("ps-edu_result", r.edu_result, dis), ref && r.educator === true)}
+      ${f("ps-recontact_date","٥) موعد إعادة التواصل (٧–١٤ يوماً)", `<input class="in" type="date" id="ps-recontact_date" value="${esc(r.recontact_date || "")}" ${dis}>`, eduRef)}
+      ${f("ps-recontact_result","نتيجة إعادة التواصل", AR("ps-recontact_result", r.recontact_result, dis), eduRef)}
+      ${f("ps-consent_form","٤) توقيع نموذج موافقة إكمال المسار", YN("ps-consent_form", r.consent_form, dis), needConsentForm)}
+      ${f("ps-refusal_form","٦) توقيع نموذج الرفض", YN("ps-refusal_form", r.refusal_form, dis), eduRef && r.recontact_result === "refuse")}
+      ${f("ps-hospital","التحويل لمستشفى الأمير محمد بن ناصر", YN("ps-hospital", r.hospital, dis), canHospital)}
+      ${f("ps-platform","٧) الإدخال في منصة مسار صحة القولون", YN("ps-platform", r.platform, dis))}
+      ${f("ps-phone","رقم الجوال", `<input class="in" id="ps-phone" dir="ltr" inputmode="tel" maxlength="10" value="${esc(r.phone || "")}" ${dis}>`)}
+    </div>
+    ${f("ps-notes","ملاحظات", `<input class="in" id="ps-notes" value="${esc(r.notes || "")}" ${dis} style="width:100%">`)}
+    ${isSectorTeam() ? `<div class="actions"><button type="button" class="btn sm" data-pact="save">حفظ الحالة</button><button type="button" class="btn ghost sm" data-pact="close">إغلاق</button><button type="button" class="btn del" data-pact="del">حذف الحالة</button><span class="msg" id="ps-msg"></span></div>` : `<div class="actions"><button type="button" class="btn ghost sm" data-pact="close">إغلاق</button></div>`}
+  </div>`;
+}
+function renderPos(force, bg){
+  const box = $("pwp-pos"); if (!box) return;
+  if (!REC || S.openPw !== "col") { box.hidden = true; return; }
+  box.hidden = false;
+  if (force) loadPos(true); else if (!S.pl.rows && !S.pl.loading) loadPos(true);
+  if (bg && box.contains(document.activeElement) && document.activeElement.closest(".posform, #ps-add")) { const ind = $("pos-ind"); if (ind) ind.innerHTML = posIndicatorHtml(); return; }
+  let h = `<div id="pos-ind">${posIndicatorHtml()}</div>`;
+  const canSee = isSectorTeam() || (S.role === "moc_manager" && MODE === "sector") || (S.role === "moc_manager" && S.myCenter === S.cfg.salama.id);
+  if (!canSee) { box.innerHTML = h + `<p class="recnote" style="margin-top:8px">تفاصيل الحالات تظهر لفريق القطاع ولمدير المركز لحالات مركزه فقط.</p>`; return; }
+  h += `<h3 style="margin-top:14px">متابعة الحالات الإيجابية</h3>`;
+  if (isSectorTeam()) h += `<form class="recform" id="ps-add" novalidate style="max-width:none"><div class="recgrid">
+      <div class="field"><label for="pa-center">المركز</label><select class="in" id="pa-center"><option value="">اختر المركز</option>${centers().filter(c => isOn(c, "col")).map(c => `<option value="${esc(c.id)}" ${MODE === "salama" && c.id === S.cfg.salama.id ? "selected" : ""}>${esc(c.name)}</option>`).join("")}</select></div>
+      <div class="field"><label for="pa-nid">السجل المدني</label><input class="in" id="pa-nid" dir="ltr" inputmode="numeric" maxlength="10" placeholder="1xxxxxxxxx"></div>
+      <div class="field"><label for="pa-phone">رقم الجوال</label><input class="in" id="pa-phone" dir="ltr" inputmode="tel" maxlength="10" placeholder="05xxxxxxxx"></div>
+      <div class="field"><label for="pa-date">تاريخ النتيجة الإيجابية</label><input class="in" type="date" id="pa-date" max="${TODAY}" value="${TODAY}"></div>
+    </div><div class="actions"><button class="btn" type="submit">إضافة حالة إيجابية</button><span class="msg" id="pa-msg"></span></div></form>`;
+  const rows = S.pl.rows;
+  if (!rows) h += `<p class="muted">جارٍ تحميل الحالات…</p>`;
+  else {
+    let list = rows.filter(r => MODE !== "salama" || r.center === S.cfg.salama.id).filter(r => !S.pf.center || r.center === S.pf.center)
+      .filter(r => S.pf.status === "all" || (S.pf.status === "open" ? !POS_DONE(r) : POS_DONE(r)));
+    const due = rows.filter(r => !POS_DONE(r) && r.recontact_date && r.recontact_date <= TODAY && !r.recontact_result).length;
+    h += `<div class="entry-top" style="margin-top:8px">
+      ${MODE === "salama" || S.role === "moc_manager" ? "" : `<div class="field"><label for="pf-center">المركز</label><select class="in" id="pf-center"><option value="">جميع المراكز</option>${centers().filter(c => isOn(c, "col")).map(c => `<option value="${esc(c.id)}" ${S.pf.center === c.id ? "selected" : ""}>${esc(c.name)}</option>`).join("")}</select></div>`}
+      <div class="field"><label for="pf-status">الحالة</label><select class="in" id="pf-status">${[["open","قيد المتابعة"],["done","أتمّت المسار"],["all","الكل"]].map(([v,l]) => `<option value="${v}" ${S.pf.status === v ? "selected" : ""}>${l}</option>`).join("")}</select></div>
+    </div>${due ? `<div class="rsum"><span style="background:var(--bad-bg);color:var(--bad)">حلّ موعد إعادة التواصل لـ ${n(due)} حالة</span></div>` : ""}`;
+    h += !list.length ? `<p class="muted">لا توجد حالات بهذه الحالة.</p>` : `<div class="scroll"><table style="min-width:760px"><thead><tr><th>المركز</th><th>تاريخ النتيجة</th><th>السجل المدني</th><th>الجوال</th><th>الحالة</th><th>منصة المسار</th><th></th></tr></thead><tbody>${list.map(r => {
+      const [k, l] = posStatus(r);
+      return `<tr><td class="l">${esc(centerById(r.center)?.name || r.center)}</td><td><span class="num">${esc(r.result_date)}</span></td><td class="nid">${esc(r.nid)}</td><td class="nid">${esc(r.phone || "")}</td><td><span class="pill ${k}">${l}</span></td><td>${r.platform ? "✓" : "—"}</td><td><button type="button" class="btn ghost sm" data-popen="${esc(r.id)}">${S.pe.openPos === r.id ? "إخفاء" : isSectorTeam() ? "متابعة" : "عرض"}</button></td></tr>
+        ${S.pe.openPos === r.id ? `<tr><td colspan="7" style="white-space:normal;background:var(--surface)">${posCaseForm(r)}</td></tr>` : ""}`; }).join("")}</tbody></table></div>`;
+  }
+  box.innerHTML = h;
+  $("ps-add")?.addEventListener("submit", addPos);
+  $("pf-center")?.addEventListener("change", e => { S.pf.center = e.target.value; renderPos(false); });
+  $("pf-status")?.addEventListener("change", e => { S.pf.status = e.target.value; renderPos(false); });
+  box.querySelectorAll("[data-popen]").forEach(b => b.addEventListener("click", () => { S.pe.openPos = S.pe.openPos === b.dataset.popen ? null : b.dataset.popen; renderPos(false); }));
+  const pf = box.querySelector(".posform");
+  if (pf){
+    pf.addEventListener("change", e => { if (e.target.id && /^ps-(informed|decision|educator|edu_result|recontact_result)$/.test(e.target.id)) { const row = S.pl.rows.find(x => x.id === pf.dataset.pid); if (row) { Object.assign(row, readPosForm(pf)); renderPos(false); } } });
+    pf.addEventListener("click", e => { const a = e.target.closest("[data-pact]"); if (!a) return; if (a.dataset.pact === "close") { S.pe.openPos = null; loadPos(true); } else if (a.dataset.pact === "save") savePos(pf); else delPos(a, pf.dataset.pid); });
+  }
+}
+function readPosForm(pf){
+  const o = {}, g = id => pf.querySelector("#ps-" + id);
+  for (const k of ["informed","consent_doc","raqeem_refusal","educator","consent_form","refusal_form","hospital","platform"]) { const el = g(k); if (el) o[k] = el.value === "" ? null : el.value === "1"; }
+  for (const k of ["decision","edu_result","recontact_result"]) { const el = g(k); if (el) o[k] = el.value || null; }
+  const rd = g("recontact_date"); if (rd) o.recontact_date = rd.value || null;
+  const ph = g("phone"); if (ph) o.phone = toLatin(ph.value).replace(/[\s-]/g, "") || null;
+  const nt = g("notes"); if (nt) o.notes = nt.value.trim() || null;
+  if (o.informed !== true) { o.decision = null; }
+  if (o.decision !== "refuse" && "decision" in o) { o.raqeem_refusal = null; o.educator = null; o.edu_result = null; o.recontact_date = null; o.recontact_result = null; o.refusal_form = null; }
+  if (o.decision !== "accept" && "decision" in o) o.consent_doc = null;
+  return o;
+}
+async function savePos(pf){
+  const msg = pf.querySelector("#ps-msg"), patch = readPosForm(pf);
+  if (patch.phone && !/^05\d{8}$/.test(patch.phone)) { msg.className = "msg bad"; msg.textContent = "رقم الجوال ١٠ أرقام يبدأ بـ 05."; return; }
+  msg.className = "msg"; msg.textContent = "جارٍ الحفظ…";
+  try { const r = await window.MOCPOS.update(pf.dataset.pid, patch); const row = S.pl.rows.find(x => x.id === r.id); if (row) Object.assign(row, r); toast("تم حفظ الحالة."); S.pe.openPos = null; renderPos(false); }
+  catch (err) { msg.className = "msg bad"; msg.textContent = DENIED(err) ? "تعديل الحالات متاح لفريق القطاع فقط." : "تعذّر الحفظ. حاول مرة أخرى."; }
+}
+async function addPos(e){
+  e.preventDefault();
+  const msg = $("pa-msg"); msg.className = "msg bad";
+  const center = $("pa-center").value, nid = toLatin($("pa-nid").value).trim(), phone = toLatin($("pa-phone").value).replace(/[\s-]/g, ""), d = $("pa-date").value;
+  if (!center) { msg.textContent = "اختر المركز."; return; }
+  if (!/^[12]\d{9}$/.test(nid)) { msg.textContent = "السجل المدني ١٠ أرقام يبدأ بـ 1 أو 2."; return; }
+  if (phone && !/^05\d{8}$/.test(phone)) { msg.textContent = "رقم الجوال ١٠ أرقام يبدأ بـ 05."; return; }
+  if (!d || d > TODAY) { msg.textContent = "اختر تاريخ النتيجة."; return; }
+  if ((S.pl.rows || []).some(r => r.nid === nid && !POS_DONE(r))) { msg.textContent = "هذا السجل له حالة إيجابية قيد المتابعة مسبقاً."; return; }
+  msg.className = "msg"; msg.textContent = "جارٍ الحفظ…";
+  try { const r = await window.MOCPOS.add({ center, nid, phone: phone || null, result_date: d }); S.pl.rows = [r, ...(S.pl.rows || [])]; S.pe.openPos = r.id; toast("تمت إضافة الحالة الإيجابية."); renderPos(false); }
+  catch (err) { msg.className = "msg bad"; msg.textContent = DENIED(err) ? "إضافة الحالات متاحة لفريق القطاع فقط." : "تعذّر الحفظ. حاول مرة أخرى."; }
+}
+async function delPos(b, id){
+  if (b.dataset.confirm !== "1") { b.dataset.confirm = "1"; b.textContent = "تأكيد الحذف"; setTimeout(() => { if (b.isConnected) { b.dataset.confirm = ""; b.textContent = "حذف الحالة"; } }, 4000); return; }
+  try { await window.MOCPOS.remove(id); S.pl.rows = S.pl.rows.filter(r => r.id !== id); S.pe.openPos = null; toast("تم حذف الحالة."); renderPos(false); }
+  catch (err) { toast("تعذّر حذف الحالة."); }
+}
+
 /* ---- entry ---- */
 function entrySection(fixed){
   return `<h2 id="h-entry">رصد المنجز اليومي</h2><p class="sub">يُدخل كل مركز منجزه اليومي لكل مسار. التاريخ يبدأ من ${minDate()} لأن ما قبله محسوب في الرصيد الافتتاحي.</p>
@@ -1188,6 +1357,7 @@ function renderAdmin(){
     S.cfg = snap.data(); S.draft = null; render();
   }, () => toast("انقطع الاتصال بالبيانات. أعد تحميل الصفحة."));
   if (MODE === "salama" && !EXT) db.doc("summary/sector").onSnapshot(snap => { S.summary = snap.exists ? snap.data() : null; if (S.cfg) render(); }, () => {});
+  if (window.MOCPOS) window.MOCPOS.onCounts(rows => { setPosCounts(rows); if (S.cfg && S.openPw === "col") renderPos(false, true); }, () => {});
   if (REC) window.MOCREC.onCounts(rows => { setCounts(rows); if (S.cfg && !(document.activeElement && document.activeElement.closest?.("#adm-body"))) render(); }, () => {});
   db.collection("entries").onSnapshot(snap => {
     S.entries = new Map(snap.docs.map(d => [d.id, d.data()]));
