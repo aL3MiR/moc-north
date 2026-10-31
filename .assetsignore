@@ -9,3 +9,4 @@ moc-setup.sql
 moc-records.sql
 moc-colon.sql
 moc-delete-fix.sql
+*.sql
