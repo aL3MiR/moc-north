@@ -472,7 +472,6 @@ function openPw(k){
     ${p.how ? `<div class="pwp-sec"><h3>آلية العمل</h3><p>${p.how}</p></div>` : ""}
     <div class="pwp-sec"><h3>${p.how ? "شروط الاحتساب ضمن المستهدف" : "الفئات المستهدفة"}</h3><ul>${p.crit.map(c => `<li>${c}</li>`).join("")}</ul></div>
     ${(p.blocks||[]).map(b => `<div class="pwp-sec"><h3>${b.t}</h3><ul>${b.items.map(i => `<li>${i}</li>`).join("")}</ul></div>`).join("")}
-    ${p.extra ? `<div class="pwp-sec"><h3>المؤشرات</h3><p>${p.extra}</p></div>` : ""}
     ${S.myCenter ? `<div class="pwp-sec" id="pwp-entry"></div><div class="pwp-sec" id="pwp-map"></div>` : `<div class="pwp-sec" id="pwp-map"></div><div class="pwp-sec" id="pwp-entry"></div>`}
     <div class="pwp-sec" id="pwp-pos" hidden></div>
     <div class="pwp-sec" id="pwp-audit" hidden></div>
