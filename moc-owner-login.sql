@@ -1,5 +1,5 @@
 -- منصة المسارات الوطنية — تغيير اسم المستخدم وكلمة المرور لحساب مشرف القطاع
--- تنبيه: نفس الحساب يُستخدم في منصة الصحة المدرسية، فيتغير الدخول في المنصتين.
+-- حساب واحد للمشرف في المنصتين: منصة المسارات الوطنية ومنصة الصحة المدرسية (نفس اسم المستخدم وكلمة المرور).
 -- 1) اكتب اسم المستخدم الجديد وكلمة المرور الجديدة في السطرين المحددين أدناه (بين علامتي التنصيص).
 -- 2) اضغط Run. تظهر في الأسفل رسالة بالبريد الجديد للدخول.
 -- 3) امسح كلمة المرور من المحرر بعد التشغيل ولا تحفظ الاستعلام (Snippet).
@@ -27,6 +27,6 @@ begin
     where id = uid;
   update auth.identities set identity_data = identity_data || jsonb_build_object('email', em), updated_at = now()
     where user_id = uid and provider = 'email';
-  raise notice 'تم. الدخول الآن باسم المستخدم: % (وفي منصة الصحة المدرسية بالبريد: %)', new_user, em;
+  raise notice 'تم. الدخول في المنصتين باسم المستخدم: %', new_user;
 end $$;
-select email as "بريد الدخول الجديد للمشرف" from auth.users where raw_app_meta_data->>'role' = 'owner';
+select raw_user_meta_data->>'username' as "اسم مستخدم المشرف" from auth.users where raw_app_meta_data->>'role' = 'owner';
