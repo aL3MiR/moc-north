@@ -162,6 +162,18 @@ h2{font-family:var(--f-display);font-size:24px;color:var(--navy);margin:28px 0 1
 .pwp-in{max-width:900px;margin:0 auto;padding-bottom:30px;display:grid;gap:12px}
 .pwp-age{background:var(--strip);color:var(--strip-ink);border-radius:8px;padding:8px 14px;font-size:15px}
 .pwp-sec{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 16px}
+.pw-mh{display:flex;align-items:flex-end;justify-content:flex-start;gap:10px 16px;flex-wrap:wrap;margin-bottom:6px}
+.pw-mh h3{margin:0!important}
+.mtabs{display:flex;gap:6px;flex-wrap:wrap}
+.mtab{font:inherit;font-weight:700;font-size:14px;border:1.5px solid var(--line);background:var(--surface);color:var(--ink);border-radius:10px;padding:4px 14px;cursor:pointer;display:flex;flex-direction:column;align-items:center;line-height:1.25}
+.mtab small{font-size:10.5px;font-weight:600;color:var(--muted)}
+.mtab.cur{border-color:var(--gold);background:color-mix(in srgb,var(--gold) 18%,var(--surface))}
+.mtab.cur small{color:inherit}
+.mtab[aria-pressed="true"]{background:var(--band);color:var(--band-ink);border-color:var(--band);box-shadow:0 0 0 2px var(--gold)}
+.mtab[aria-pressed="true"]:not(.cur){box-shadow:none}
+.mtab[aria-pressed="true"] small{color:inherit}
+.mtab:disabled{opacity:.45;cursor:not-allowed}
+.mnote{font-size:13px;color:var(--muted);margin:0 0 8px}
 .pwp-sec h3{margin:0 0 6px;font-family:var(--f-display);font-size:20px;color:var(--navy);border-bottom:2px solid var(--gold);display:inline-block;padding-bottom:2px}
 .pwp-sec p{margin:0}
 .recform{display:grid;gap:8px;max-width:620px;margin-top:6px}
@@ -465,7 +477,7 @@ function openPw(k){
     <div class="pwp-sec" id="pwp-pos" hidden></div>
     <div class="pwp-sec" id="pwp-audit" hidden></div>
     <div class="pwp-sec"><h3>النماذج</h3>${forms ? `<div class="forms-grid">${forms}</div>` : `<p class="muted">لا توجد نماذج مرفقة لهذا المسار حالياً.</p>`}</div>`;
-  S.openPw = k; S.pe.dirty = false; S.pe.openPos = null;
+  S.openPw = k; S.pm = CUR; S.pe.dirty = false; S.pe.openPos = null;
   refreshPw(true);
   lastFocus = document.activeElement;
   $("pwpage").hidden = false; document.body.style.overflow = "hidden";
@@ -497,8 +509,22 @@ function setCounts(rows){
     if (String(r.day).slice(0,7) === TODAY.slice(0,7)) { o.monthN += r.n; o.monthComplete += r.complete; }
     days.add(r.center + "|" + r.day); byDay.set(r.center + "|" + r.pathway + "|" + r.day, r);
   }
-  S.cnt = cnt; S.cntDays = days; S.cntDay = byDay;
+  S.cnt = cnt; S.cntDays = days; S.cntDay = byDay; S.cntMemo = null;
 }
+function cntM(M){
+  if (S.cntMemo && S.cntMemo.M === M) return S.cntMemo.v;
+  const v = {};
+  for (const r of S.cntDay.values()){
+    const ym = String(r.day).slice(0,7); if (ym > M) continue;
+    const o = ((v[r.center] ||= {})[r.pathway] ||= { n:0, matched:0, unmatched:0, pending:0, complete:0, monthN:0, monthComplete:0, monthMatched:0 });
+    o.n += r.n; o.matched += r.matched; o.unmatched += r.unmatched; o.pending += r.pending; o.complete += r.complete;
+    if (ym === M){ o.monthN += r.n; o.monthComplete += r.complete; o.monthMatched += r.matched; }
+  }
+  S.cntMemo = { M, v }; return v;
+}
+const AR_M = ["يناير","فبراير","مارس","أبريل","مايو","يونيو","يوليو","أغسطس","سبتمبر","أكتوبر","نوفمبر","ديسمبر"];
+const mName = M => AR_M[+M.slice(5,7) - 1];
+function pwMonths(){ const y = +CUR.slice(0,4), from = y === 2026 ? 10 : 1; return Array.from({ length: 13 - from }, (_, i) => `${y}-${pad(from + i)}`); }
 const reportedOn = (cid, ds) => !!dayRec(cid, ds) || S.cntDays.has(cid + "|" + ds);
 const fieldsOf = p => REC && p.rec ? [] : p.fields;
 const canW = cid => S.canWrite && (!S.myCenter || S.myCenter === cid);
@@ -523,18 +549,19 @@ const centerById = id => centers().find(c => c.id === id);
 const isOn = (c, k) => !!(c.active && c.active[k]);
 const tgt = (cid, k) => { const v = S.cfg.targets?.[cid]?.[k]; return typeof v === "number" ? v : null; };
 const CUR = TODAY.slice(0,7);
-function sumEntries(cid){
+function sumEntries(cid, M = CUR){
   const out = {}, mon = {}; const days = new Set();
-  const cb = S.cfg.colBase, colCut = cb && cb.month === CUR ? cb.date : "";
+  const cb = S.cfg.colBase, colCut = cb && cb.month === M ? cb.date : "";
   for (const doc of S.entries.values()){
     if (doc.center !== cid) continue;
     for (const [dd, rec] of Object.entries(doc.days || {})){
       days.add(`${doc.year}-${pad(doc.month)}-${dd}`);
+      if (`${doc.year}-${pad(doc.month)}` > M) continue;
       for (const p of PW){
         const r = rec[p.k]; if (!r) continue;
         const o = (out[p.k] ||= {a:0,r:0,e:0,c:0,m:0});
         o.a += +r.a || 0; o.r += +r.r || 0; o.e += +r.e || 0; o.c += +r.c || 0; o.m += +r.m || 0;
-        if (`${doc.year}-${pad(doc.month)}` === CUR){ const q = (mon[p.k] ||= {a:0,e:0,c:0,r:0,ca:0,cr:0}); q.a += +r.a || 0; q.e += +r.e || 0; q.c += +r.c || 0; q.r += +r.r || 0;
+        if (`${doc.year}-${pad(doc.month)}` === M){ const q = (mon[p.k] ||= {a:0,e:0,c:0,r:0,ca:0,cr:0}); q.a += +r.a || 0; q.e += +r.e || 0; q.c += +r.c || 0; q.r += +r.r || 0;
           if (`${doc.year}-${pad(doc.month)}-${dd}` > colCut) { q.ca += +r.a || 0; q.cr += +r.r || 0; } }
       }
     }
@@ -542,15 +569,15 @@ function sumEntries(cid){
   for (const key of S.cntDays) { const [cc, dd] = key.split("|"); if (cc === cid) days.add(dd); }
   return { sums: out, mon, days };
 }
-function evalCenter(c){
+function evalCenter(c, M = CUR){
   const base = S.cfg.baseline?.[c.id] || {};
-  const { sums, mon, days } = sumEntries(c.id);
+  const { sums, mon, days } = sumEntries(c.id, M);
   const res = { c, days, pw:{} };
   for (const p of PW){
     const on = isOn(c, p.k), t = tgt(c.id, p.k), e = sums[p.k] || {a:0,r:0,c:0,m:0};
     let ach, done = null, contact = e.c || 0, matched = 0, unmatched = 0, pending = 0, matchRate = e.a ? e.m / e.a : null;
-    const k = S.cnt[c.id]?.[p.k] || {};
-    if (p.k === "col" && S.cfg.colBase){ const cb = S.cfg.colBase, b = cb.month === CUR ? (cb.c?.[c.id] || {}) : {}; ach = (b.req || 0) + (mon.col?.ca || 0); done = (b.res || 0) + (mon.col?.cr || 0); }
+    const k = (REC ? cntM(M)[c.id]?.[p.k] : null) || {};
+    if (p.k === "col" && S.cfg.colBase){ const cb = S.cfg.colBase, b = cb.month === M ? (cb.c?.[c.id] || {}) : {}; ach = (b.req || 0) + (mon.col?.ca || 0); done = (b.res || 0) + (mon.col?.cr || 0); }
     else if (p.k === "col"){ ach = (base.col?.req || 0) + e.a; done = (base.col?.res || 0) + e.r; }
     else if (REC && p.mammo){ ach = k.monthComplete || 0; done = k.monthN || 0; contact = mon[p.k]?.c || 0; }
     else if (p.monthly){ ach = mon[p.k]?.e || 0; done = mon[p.k]?.a || 0; }
@@ -559,7 +586,8 @@ function evalCenter(c){
     else ach = (typeof base[p.k] === "number" ? base[p.k] : 0) + e.a;
     const pct = on && t ? ach / t : null;
     const comp = p.k === "col" ? (ach ? done / ach : null) : null;
-    res.pw[p.k] = { on, t, ach, done, pct, comp, contact, match:e.m || 0, dailyA:e.a || 0, matchRate, matched, unmatched, pending };
+    const monAch = p.rec ? (REC ? k.monthMatched || 0 : mon[p.k]?.a || 0) : null;
+    res.pw[p.k] = { on, t, ach, done, pct, comp, contact, match:e.m || 0, dailyA:e.a || 0, matchRate, matched, unmatched, pending, monAch };
   }
   const ps = PW.map(p => res.pw[p.k].pct).filter(v => v != null);
   res.posPct = REC && isOn(c, "col") ? posOf(c.id).pct : null;
@@ -570,9 +598,9 @@ function evalCenter(c){
 function sectorTotals(evs){
   const out = {};
   for (const p of PW){
-    let t = 0, a = 0, d = 0, c = 0, m = 0, da = 0, mt = 0, um = 0, pe = 0, any = false;
-    for (const e of evs){ const x = e.pw[p.k]; if (!x.on) continue; any = true; if (x.t) { t += x.t; a += x.ach; d += x.done || 0; } c += x.contact; m += x.match; da += x.dailyA; mt += x.matched; um += x.unmatched; pe += x.pending; }
-    out[p.k] = { any, t, ach:a, done:d, pct: t ? a / t : null, comp: p.k === "col" && a ? d / a : null, contact:c, match:m, matched:mt, unmatched:um, pending:pe,
+    let t = 0, a = 0, d = 0, c = 0, m = 0, da = 0, mt = 0, um = 0, pe = 0, ma = 0, any = false;
+    for (const e of evs){ const x = e.pw[p.k]; if (!x.on) continue; any = true; if (x.t) { t += x.t; a += x.ach; d += x.done || 0; } c += x.contact; m += x.match; da += x.dailyA; mt += x.matched; um += x.unmatched; pe += x.pending; ma += x.monAch || 0; }
+    out[p.k] = { any, t, ach:a, done:d, pct: t ? a / t : null, comp: p.k === "col" && a ? d / a : null, contact:c, match:m, matched:mt, unmatched:um, pending:pe, monAch:ma,
       matchRate: REC && p.rec ? ((mt + um) ? mt / (mt + um) : null) : (da ? m / da : null) };
   }
   return out;
@@ -611,17 +639,18 @@ function renderHeader(){
 
 /* ---- tiles ---- */
 function tile(p, x, label){
+  const ML = x.ml || "هذا الشهر";
   if (!x.on && !x.any) return `<div class="kpi off"><span class="k">${p.name}</span><span class="v n">—</span><span class="s">غير مفعّل</span></div>`;
   const pct = x.pct;
   const main = p.monthly
-    ? `<span class="s">التحويلات المكتملة هذا الشهر <b class="num">${n(x.ach)}</b> من المستهدف الشهري <b class="num">${n(x.t)}</b> · إجمالي المحولات <b class="num">${n(x.done)}</b></span>`
+    ? `<span class="s">التحويلات المكتملة ${ML} <b class="num">${n(x.ach)}</b> من المستهدف الشهري <b class="num">${n(x.t)}</b> · إجمالي المحولات <b class="num">${n(x.done)}</b></span>`
     : p.k === "col"
-    ? `<span class="s">${S.cfg.colBase ? "التغطية هذا الشهر" : "التغطية"}: الطلبات <b class="num">${n(x.ach)}</b> من <b class="num">${n(x.t)}</b> · الالتزام <b class="num">${pf(x.comp)}</b></span>`
-    : x.t ? `<span class="s">المحقق <b class="num">${n(x.ach)}</b> من المستهدف <b class="num">${n(x.t)}</b></span>` : `<span class="s">المحقق <b class="num">${n(x.ach)}</b> · لم يُحدد المستهدف بعد</span>`;
+    ? `<span class="s">${S.cfg.colBase ? `التغطية ${ML}` : "التغطية"}: الطلبات <b class="num">${n(x.ach)}</b> من <b class="num">${n(x.t)}</b> · الالتزام <b class="num">${pf(x.comp)}</b></span>`
+    : x.t ? `<span class="s">المحقق <b class="num">${n(x.ach)}</b> من المستهدف <b class="num">${n(x.t)}</b>${x.ml && x.monAch != null ? ` · منجز ${x.ml} <b class="num">${n(x.monAch)}</b>` : ""}</span>` : `<span class="s">المحقق <b class="num">${n(x.ach)}</b> · لم يُحدد المستهدف بعد</span>`;
   return `<div class="kpi"><span class="k">${p.name}</span><span class="v ${vcls(pct)}"><span class="num">${pf(pct)}</span></span>
     <div class="meter"><i style="width:${Math.min(100,(pct||0)*100)}%;--c:${colorOf(pct)}"></i></div>${main}
     ${REC ? (p.rec ? `<div class="s2"><span>بانتظار التدقيق <b class="num">${n(x.pending)}</b></span><span>غير مطابق <b class="num">${n(x.unmatched)}</b></span></div>`
-      : p.mammo ? `<div class="s2"><span>التواصل هذا الشهر <b class="num">${n(x.contact)}</b></span></div>` : "")
+      : p.mammo ? `<div class="s2"><span>التواصل ${ML} <b class="num">${n(x.contact)}</b></span></div>` : "")
       : `<div class="s2"><span>التواصل <b class="num">${n(x.contact)}</b></span><span>المطابقة <b class="num">${pf(x.matchRate)}</b></span></div>`}</div>`;
 }
 
@@ -720,11 +749,19 @@ const pinSalama = (arr, get) => { const id = S.cfg.salama.id; const ranked = arr
 const bar = pct => `<div class="meter" style="min-width:110px"><i style="width:${Math.min(100,(pct||0)*100)}%;--c:${colorOf(pct)}"></i></div>`;
 function refreshPw(force){
   const p = PWK[S.openPw]; if (!p || !S.cfg) return;
-  const evs = centers().map(evalCenter), tot = sectorTotals(evs);
+  const months = pwMonths();
+  if (!months.includes(S.pm) || S.pm > CUR) S.pm = CUR;
+  const M = S.pm, ML = M === CUR ? "هذا الشهر" : `شهر ${mName(M)}`;
+  const evs = centers().map(c => evalCenter(c, M)), tot = sectorTotals(evs);
+  for (const e of evs) e.pw[p.k].ml = ML;
+  tot[p.k].ml = ML;
+  const tabs = `<div class="mtabs" role="group" aria-label="شهر الإنجاز">${months.map(x => `<button type="button" class="mtab${x === CUR ? " cur" : ""}" data-pm="${x}" aria-pressed="${x === M}"${x > CUR ? ` disabled title="يبدأ ${mName(x)}"` : ""}>${mName(x)}${x === CUR ? "<small>الشهر الحالي</small>" : ""}</button>`).join("")}</div>`;
+  const note = M === CUR ? "" : `<p class="mnote">تعرض الخريطة إنجاز شهر ${mName(M)} ${M.slice(0,4)}${p.rec ? " (المحقق تراكمي حتى نهاية الشهر، ومنجز الشهر ما أُضيف خلاله)" : ""}.</p>`;
+  const head = t => `<div class="pw-mh"><h3>${t}</h3>${tabs}</div>${note}`;
   let m = "";
   if (MODE === "salama"){
-    const me = evs.find(e => e.c.id === S.cfg.salama.id), x = me.pw[p.k], sp = S.summary?.pw?.[p.k] ?? null;
-    m = `<h3>إنجاز المركز — ${p.name}</h3><div class="kpis" style="margin-top:6px">${tile(p, x)}
+    const me = evs.find(e => e.c.id === S.cfg.salama.id), x = me.pw[p.k], sp = (EXT || M !== CUR) ? tot[p.k].pct : (S.summary?.pw?.[p.k] ?? null);
+    m = `${head(`إنجاز المركز — ${p.name}`)}<div class="kpis" style="margin-top:6px">${tile(p, x)}
       <div class="kpi"><span class="k">متوسط القطاع</span><span class="v ${vcls(sp)}"><span class="num">${pf(sp)}</span></span>${bar(sp)}<span class="s">${EXT ? "من بيانات جميع مراكز القطاع" : "يُحدَّث تلقائياً من منصة القطاع"}</span></div></div>`;
   } else {
     const mine = e => !S.myCenter || e.c.id === S.myCenter;
@@ -733,7 +770,7 @@ function refreshPw(force){
     const x = S.myCenter ? { ...(evs.find(e => e.c.id === S.myCenter)?.pw[p.k] || {}), any:true } : tot[p.k];
     const totCells = p.k === "col" ? `<td>${n(x.t)}</td><td>${n(x.ach)}</td><td>${n(x.done)}</td><td class="${cls(x.pct)}">${pf(x.pct)}</td><td class="${cls(x.comp)}">${pf(x.comp)}</td>`
       : `<td>${x.t ? n(x.t) : "—"}</td>${p.monthly ? `<td>${n(x.done)}</td>` : ""}<td>${n(x.ach)}</td><td class="${cls(x.pct)}">${pf(x.pct)}</td>`;
-    m = `<h3>${S.myCenter ? `إنجاز مركز ${esc(centerById(S.myCenter)?.name || "")}` : "خريطة إنجاز المراكز"} — ${p.name}</h3>
+    m = `${head(`${S.myCenter ? `إنجاز مركز ${esc(centerById(S.myCenter)?.name || "")}` : "خريطة إنجاز المراكز"} — ${p.name}`)}
       <div class="kpis" style="margin-block:6px 10px">${tile(p, {...x, on:x.any})}</div>
       <div class="scroll"><table style="min-width:900px"><thead><tr><th>م</th><th>المركز</th><th>مدير المركز</th>${pwHead(p)}<th>الإنجاز</th>${exHead(p)}</tr></thead><tbody>
       ${pinSalama(on, e => e.pw[p.k].pct).map(({e}, i) => { const y = e.pw[p.k]; return `<tr${e.c.id === S.cfg.salama.id ? ' class="me"' : ""}><td>${i + 1}</td><td class="l">${esc(e.c.name)}</td><td class="m">${esc(e.c.manager || "—")}</td>${pwCells(p, y)}<td>${bar(y.pct)}</td>${exCells(p, y)}</tr>`; }).join("")}
@@ -743,6 +780,7 @@ function refreshPw(force){
       <div class="legend"><span><i style="background:var(--ok-bg)"></i>٩٠٪ فأكثر</span><span><i style="background:var(--warn-bg)"></i>من ٧٠ إلى ٨٩٪</span><span><i style="background:var(--bad-bg)"></i>أقل من ٧٠٪</span></div>`;
   }
   $("pwp-map").innerHTML = m;
+  $("pwp-map").querySelectorAll("[data-pm]").forEach(b => b.addEventListener("click", () => { S.pm = b.dataset.pm; refreshPw(false); }));
   renderPwEntry(force);
   if (p.k === "col") renderPos(force, !force);
 }
