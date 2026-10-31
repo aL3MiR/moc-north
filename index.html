@@ -149,10 +149,6 @@ button{cursor:pointer}
 .thx .sig b{font-family:var(--f-display);font-size:18px;color:#fff}
 @media (prefers-reduced-motion:no-preference){.thx .tag{animation:thxp 2.4s ease-in-out 3}@keyframes thxp{50%{box-shadow:0 0 0 6px color-mix(in srgb,var(--gold) 30%,transparent)}}}
 @media (max-width:560px){.thx{padding:20px 14px 16px}.thx::before,.thx::after{display:none}.thx .body{font-size:15.5px}}
-.recopt{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;margin:6px 0 4px;padding:8px 12px;border:1.5px dashed var(--th);border-radius:10px;background:color-mix(in srgb,var(--th) 7%,var(--surface));font-size:14px}
-.recopt span{display:inline-flex;align-items:center;gap:6px}
-.recopt i{font-style:normal;display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;background:var(--th);color:var(--th-ink);font-size:12px;font-weight:700}
-.recopt .btn{margin-inline-start:auto}
 /* reminder */
 .remind{margin-top:14px;background:var(--warn-bg);color:var(--ink);border:1.5px solid var(--warn);border-radius:12px;padding:12px 16px;display:grid;gap:6px}
 .remind h3{margin:0;font-family:var(--f-display);font-size:19px;color:var(--warn);display:flex;gap:8px;align-items:center}
@@ -465,7 +461,7 @@ const FORMS = [
    use:"صحة القولون (FIT)", desc:"الإجراءات المعتمدة بعد النتيجة الإيجابية لفحص FIT: فتح ملف المتابعة، والتثقيف الصحي، وإقرار استكمال المسار أو رفضه، والمتابعة حتى التنظير. يتضمن نماذج الإقرار (٥ صفحات)." }
 ];
 FORMS.push({ file:"form-daily-ncd.pdf", img:"form-daily-ncd.jpg", name:"نموذج رصد المنجز اليومي — المسارات الوطنية", dl:"نموذج رصد المنجز اليومي - المسارات الوطنية.pdf",
-  use:"السكري · اعتلال الدهون · السمنة · ارتفاع ضغط الدم", desc:"بديل ورقي للإدخال في المنصة: يطبعه المركز ويعبّئ فيه الاسم ورقم الهوية/الإقامة ورقم الجوال والمسار لكل مستفيد، ثم يُرفق في المنجز اليومي." });
+  use:"السكري · اعتلال الدهون · السمنة · ارتفاع ضغط الدم", desc:"يطبعه مدير المركز ويوزّعه على الأطباء لتسجيل الاسم ورقم الهوية/الإقامة ورقم الجوال والمسار لكل مستفيد، ثم تُدخل البيانات في المنجز اليومي على المنصة." });
 
 async function downloadForm(i){
   const f = FORMS[i];
@@ -900,7 +896,6 @@ function renderRecEntry(p, box, list, force){
   const dc = dayRec(cid, S.pe.date)?.[p.k]?.c;
   const rows = S.rl.key === key ? S.rl.rows : null;
   let h = `<h3>رصد المنجز اليومي — ${p.name}</h3>
-    <div class="recopt"><b>طريقتان للرصد:</b><span><i>١</i>الإدخال اليدوي في المنصة أدناه</span><span><i>٢</i>طباعة النموذج الورقي وتعبئته يدوياً ثم إرفاقه</span><button type="button" class="btn ghost sm" data-dl="3">تحميل النموذج PDF</button></div>
     <div class="entry-top" style="margin-top:6px">
       ${MODE === "salama" ? "" : `<div class="field"><label for="pe-center">المركز</label><select class="in" id="pe-center">${list.map(c => `<option value="${esc(c.id)}" ${c.id===cid?"selected":""}>${esc(c.name)}</option>`).join("")}</select></div>`}
       <div class="field"><label for="pe-date">التاريخ</label><input class="in" type="date" id="pe-date" min="${minDate()}" max="${TODAY}" value="${S.pe.date}"></div>
