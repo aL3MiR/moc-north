@@ -516,12 +516,13 @@ function cntM(M){
   const v = {};
   for (const r of S.cntDay.values()){
     const ym = String(r.day).slice(0,7); if (ym > M) continue;
-    const o = ((v[r.center] ||= {})[r.pathway] ||= { n:0, matched:0, unmatched:0, pending:0, complete:0, monthN:0, monthComplete:0, monthMatched:0 });
+    const o = ((v[r.center] ||= {})[r.pathway] ||= { n:0, matched:0, unmatched:0, pending:0, complete:0, monthN:0, monthComplete:0, monthMatched:0, monthUnmatched:0, monthPending:0 });
     o.n += r.n; o.matched += r.matched; o.unmatched += r.unmatched; o.pending += r.pending; o.complete += r.complete;
-    if (ym === M){ o.monthN += r.n; o.monthComplete += r.complete; o.monthMatched += r.matched; }
+    if (ym === M){ o.monthN += r.n; o.monthComplete += r.complete; o.monthMatched += r.matched; o.monthUnmatched += r.unmatched; o.monthPending += r.pending; }
   }
   S.cntMemo = { M, v }; return v;
 }
+const FIRST_M = "2026-10"; // أول شهر في المنصة: يُضاف إليه الرصيد الافتتاحي
 const AR_M = ["يناير","فبراير","مارس","أبريل","مايو","يونيو","يوليو","أغسطس","سبتمبر","أكتوبر","نوفمبر","ديسمبر"];
 const mName = M => AR_M[+M.slice(5,7) - 1];
 function pwMonths(){ const y = +CUR.slice(0,4), from = y === 2026 ? 10 : 1; return Array.from({ length: 13 - from }, (_, i) => `${y}-${pad(from + i)}`); }
@@ -581,9 +582,10 @@ function evalCenter(c, M = CUR){
     else if (p.k === "col"){ ach = (base.col?.req || 0) + e.a; done = (base.col?.res || 0) + e.r; }
     else if (REC && p.mammo){ ach = k.monthComplete || 0; done = k.monthN || 0; contact = mon[p.k]?.c || 0; }
     else if (p.monthly){ ach = mon[p.k]?.e || 0; done = mon[p.k]?.a || 0; }
-    else if (REC && p.rec){ matched = k.matched || 0; unmatched = k.unmatched || 0; pending = k.pending || 0;
-      ach = (typeof base[p.k] === "number" ? base[p.k] : 0) + matched; matchRate = (matched + unmatched) ? matched / (matched + unmatched) : null; }
-    else ach = (typeof base[p.k] === "number" ? base[p.k] : 0) + e.a;
+    else if (REC && p.rec){ const F = M <= FIRST_M;
+      matched = F ? k.matched || 0 : k.monthMatched || 0; unmatched = F ? k.unmatched || 0 : k.monthUnmatched || 0; pending = F ? k.pending || 0 : k.monthPending || 0;
+      ach = (F && typeof base[p.k] === "number" ? base[p.k] : 0) + matched; matchRate = (matched + unmatched) ? matched / (matched + unmatched) : null; }
+    else ach = M <= FIRST_M ? (typeof base[p.k] === "number" ? base[p.k] : 0) + e.a : mon[p.k]?.a || 0;
     const pct = on && t ? ach / t : null;
     const comp = p.k === "col" ? (ach ? done / ach : null) : null;
     const monAch = p.rec ? (REC ? k.monthMatched || 0 : mon[p.k]?.a || 0) : null;
@@ -613,7 +615,7 @@ function renderHeader(){
   $("stamp").textContent = `${greg.format(now)} · ${hijri.format(now)}`;
   $("stamp2").textContent = MODE === "salama"
     ? (EXT ? "" : S.summary?.asOf ? `آخر مزامنة مع منصة القطاع: ${new Date(S.summary.asOf).toLocaleString("ar-SA-u-nu-latn",{dateStyle:"medium",timeStyle:"short"})}` : "المزامنة مع منصة القطاع تتم تلقائياً عدة مرات يومياً")
-    : `الرصيد الافتتاحي حتى ${cfg.baselineDate} · يُضاف إليه الرصد اليومي`;
+    : `المستهدفات شهرية ويبدأ العدّ من جديد مع كل شهر · رصيد أكتوبر الافتتاحي حتى ${cfg.baselineDate}`;
   if (MODE === "salama"){
     const c = centerById(cfg.salama.id);
     $("lh-text").innerHTML = `المملكة العربية السعودية<br>تجمع جازان الصحي<br>القطاع الشمالي<br>${esc(cfg.salama.full)}`;
@@ -646,7 +648,7 @@ function tile(p, x, label){
     ? `<span class="s">التحويلات المكتملة ${ML} <b class="num">${n(x.ach)}</b> من المستهدف الشهري <b class="num">${n(x.t)}</b> · إجمالي المحولات <b class="num">${n(x.done)}</b></span>`
     : p.k === "col"
     ? `<span class="s">${S.cfg.colBase ? `التغطية ${ML}` : "التغطية"}: الطلبات <b class="num">${n(x.ach)}</b> من <b class="num">${n(x.t)}</b> · الالتزام <b class="num">${pf(x.comp)}</b></span>`
-    : x.t ? `<span class="s">المحقق <b class="num">${n(x.ach)}</b> من المستهدف <b class="num">${n(x.t)}</b>${x.ml && x.monAch != null ? ` · منجز ${x.ml} <b class="num">${n(x.monAch)}</b>` : ""}</span>` : `<span class="s">المحقق <b class="num">${n(x.ach)}</b> · لم يُحدد المستهدف بعد</span>`;
+    : x.t ? `<span class="s">المحقق ${ML} <b class="num">${n(x.ach)}</b> من المستهدف الشهري <b class="num">${n(x.t)}</b></span>` : `<span class="s">المحقق ${ML} <b class="num">${n(x.ach)}</b> · لم يُحدد المستهدف بعد</span>`;
   return `<div class="kpi"><span class="k">${p.name}</span><span class="v ${vcls(pct)}"><span class="num">${pf(pct)}</span></span>
     <div class="meter"><i style="width:${Math.min(100,(pct||0)*100)}%;--c:${colorOf(pct)}"></i></div>${main}
     ${REC ? (p.rec ? `<div class="s2"><span>بانتظار التدقيق <b class="num">${n(x.pending)}</b></span><span>غير مطابق <b class="num">${n(x.unmatched)}</b></span></div>`
@@ -662,7 +664,7 @@ function registerTable(evs, tot, highlight){
   }).join("");
   const sub = PW.map(p => S.view === "cm" ? (p.rec ? "<th>مطابق</th><th>غير مطابق</th><th>بانتظار التدقيق</th>" : p.mammo ? "<th>المحولات</th><th>المكتملة</th><th>التواصل</th>" : "<th colspan=\"3\">—</th>")
     : p.k === "col" ? `<th>${S.cfg.colBase ? "المستهدف الشهري" : "المستهدف"}</th><th>طلبات التحاليل</th><th>النتائج المكتملة</th><th>نسبة التغطية</th><th>نسبة الالتزام</th>`
-    : p.monthly ? "<th>المستهدف الشهري</th><th>المحولات</th><th>المكتملة</th><th>النسبة</th>" : "<th>المستهدف</th><th>المحقق</th><th>النسبة</th>").join("");
+    : p.monthly ? "<th>المستهدف الشهري</th><th>المحولات</th><th>المكتملة</th><th>النسبة</th>" : "<th>المستهدف الشهري</th><th>المحقق</th><th>النسبة</th>").join("");
   const cells = (x, p) => {
     if (!x.on) return `<td class="off" colspan="${S.view === "cm" ? 3 : p.k === "col" ? 5 : p.monthly ? 4 : 3}">غير مفعّل</td>`;
     if (S.view === "cm") return p.rec ? `<td class="${x.matched ? "cg" : "cn"}">${n(x.matched)}</td><td class="${x.unmatched ? "cb" : "cn"}">${n(x.unmatched)}</td><td class="${x.pending ? "cw" : "cn"}">${n(x.pending)}</td>`
@@ -695,7 +697,7 @@ function render(){
   let h = "";
   if (MODE === "salama"){
     const me = evs.find(e => e.c.id === S.cfg.salama.id);
-    h += `<h2>مؤشر الإنجاز لكل مسار — ${esc(me.c.name)}</h2><p class="sub">النسبة = المحقق ÷ المستهدف.</p>`;
+    h += `<h2>مؤشر الإنجاز لكل مسار — ${esc(me.c.name)}</h2><p class="sub">النسبة = المحقق هذا الشهر ÷ المستهدف الشهري.</p>`;
     h += `<div class="kpis"><div class="kpi main"><span class="k">الإنجاز العام للمركز</span><span class="v"><span class="num">${pf(me.overall)}</span></span><span class="s">متوسط المسارات المفعّلة${REC ? " ومؤشر إتمام مسار الحالات الإيجابية" : ""}</span></div>${PW.map(p => tile(p, me.pw[p.k])).join("")}</div>`;
     h += `<h2>مقارنة المركز بالقطاع</h2><div class="scroll"><table style="min-width:560px"><thead><tr><th>المسار</th><th>المركز</th><th>متوسط القطاع</th><th>الفرق</th></tr></thead><tbody>${PW.map(p => {
       const a = me.pw[p.k].pct, b = S.summary?.pw?.[p.k] ?? null, d = a != null && b != null ? a - b : null;
@@ -708,7 +710,7 @@ function render(){
       <span class="ico" aria-hidden="true"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></span>
       <span class="txt"><b>مراكز القطاع الشمالي (${centers().length})</b><small>لوحة إنجاز كل مركز ورصد منجزه اليومي، وجدول المراكز الكامل</small></span>
       <span class="go">عرض المراكز ←</span></button>`;
-    h += `<h2>مؤشر الإنجاز لكل مسار — القطاع الشمالي</h2><p class="sub">مجموع المراكز المفعّل فيها المسار. النسبة = مجموع المحقق ÷ مجموع المستهدف.</p>`;
+    h += `<h2>مؤشر الإنجاز لكل مسار — القطاع الشمالي</h2><p class="sub">مجموع المراكز المفعّل فيها المسار. النسبة = مجموع المحقق هذا الشهر ÷ مجموع المستهدف الشهري.</p>`;
     const sp = PW.map(p => tot[p.k].pct).filter(v => v != null);
     const spos = REC ? posTotals(centers().filter(c => isOn(c, "col")).map(c => c.id)).pct : null;
     if (spos != null) sp.push(spos);
@@ -738,7 +740,7 @@ function pwCells(p, x){
 function pwHead(p){
   if (p.k === "col") return `<th>${S.cfg.colBase ? "المستهدف الشهري" : "المستهدف"}</th><th>طلبات التحاليل</th><th>النتائج المكتملة</th><th>نسبة التغطية</th><th>نسبة الالتزام</th>`;
   if (p.monthly) return "<th>المستهدف الشهري</th><th>المحولات</th><th>المكتملة</th><th>النسبة</th>";
-  return "<th>المستهدف</th><th>المحقق</th><th>النسبة</th>";
+  return "<th>المستهدف الشهري</th><th>المحقق</th><th>النسبة</th>";
 }
 function exHead(p){ return !REC ? "<th>التواصل</th><th>المطابقون</th><th>نسبة المطابقة</th>" : p.rec ? "<th>بانتظار التدقيق</th><th>غير مطابق</th><th>نسبة المطابقة</th>" : p.mammo ? "<th>التواصل هذا الشهر</th>" : ""; }
 function exCells(p, y){ return !REC ? `<td>${n(y.contact)}</td><td>${n(y.match)}</td><td class="${cls(y.matchRate)}">${pf(y.matchRate)}</td>`
@@ -756,7 +758,7 @@ function refreshPw(force){
   for (const e of evs) e.pw[p.k].ml = ML;
   tot[p.k].ml = ML;
   const tabs = `<div class="mtabs" role="group" aria-label="شهر الإنجاز">${months.map(x => `<button type="button" class="mtab${x === CUR ? " cur" : ""}" data-pm="${x}" aria-pressed="${x === M}"${x > CUR ? ` disabled title="يبدأ ${mName(x)}"` : ""}>${mName(x)}${x === CUR ? "<small>الشهر الحالي</small>" : ""}</button>`).join("")}</div>`;
-  const note = M === CUR ? "" : `<p class="mnote">تعرض الخريطة إنجاز شهر ${mName(M)} ${M.slice(0,4)}${p.rec ? " (المحقق تراكمي حتى نهاية الشهر، ومنجز الشهر ما أُضيف خلاله)" : ""}.</p>`;
+  const note = M === CUR ? "" : `<p class="mnote">تعرض الخريطة إنجاز شهر ${mName(M)} ${M.slice(0,4)}.</p>`;
   const head = t => `<div class="pw-mh"><h3>${t}</h3>${tabs}</div>${note}`;
   let m = "";
   if (MODE === "salama"){
@@ -1221,7 +1223,7 @@ function renderEntry(force){
   renderCal();
   const e = evalCenter(c);
   $("center-sum").innerHTML = `<div class="scroll"><table><thead><tr><th>المسار</th><th>المحقق</th><th>النسبة</th></tr></thead><tbody>${PW.map(p => { const x = e.pw[p.k];
-    return x.on ? `<tr><td class="l">${p.name}${p.monthly ? " (هذا الشهر)" : ""}</td><td>${n(x.ach)}${x.t ? ` / ${n(x.t)}` : ""}</td><td class="${cls(x.pct)}">${pf(x.pct)}</td></tr>` : `<tr><td class="l">${p.name}</td><td class="off" colspan="2">غير مفعّل</td></tr>`; }).join("")}</tbody></table></div>`;
+    return x.on ? `<tr><td class="l">${p.name} (هذا الشهر)</td><td>${n(x.ach)}${x.t ? ` / ${n(x.t)}` : ""}</td><td class="${cls(x.pct)}">${pf(x.pct)}</td></tr>` : `<tr><td class="l">${p.name}</td><td class="off" colspan="2">غير مفعّل</td></tr>`; }).join("")}</tbody></table></div>`;
 }
 function syncState(){
   const rec = dayRec(S.eCenter, S.eDate);
@@ -1358,7 +1360,7 @@ async function save(e){
 function renderAdmin(){
   if (!S.draft) S.draft = JSON.parse(JSON.stringify(S.cfg));
   const d = S.draft;
-  const head = `<tr><th rowspan="2">المركز</th><th rowspan="2">مدير المركز</th><th colspan="6">مفعّل</th><th colspan="6">المستهدف (الثدي: شهري)</th></tr><tr>${PW.map(p=>`<th>${p.name}</th>`).join("")}${PW.map(p=>`<th>${p.name}</th>`).join("")}</tr>`;
+  const head = `<tr><th rowspan="2">المركز</th><th rowspan="2">مدير المركز</th><th colspan="6">مفعّل</th><th colspan="6">المستهدف الشهري</th></tr><tr>${PW.map(p=>`<th>${p.name}</th>`).join("")}${PW.map(p=>`<th>${p.name}</th>`).join("")}</tr>`;
   const rows = d.centers.map((c,i) => `<tr><td><input type="text" id="a-n-${c.id}" data-i="${i}" data-k="name" value="${esc(c.name)}"></td><td><input type="text" id="a-m-${c.id}" data-i="${i}" data-k="manager" value="${esc(c.manager)}"></td>
     ${PW.map(p => `<td><input type="checkbox" id="a-o-${c.id}-${p.k}" data-i="${i}" data-k="on" data-p="${p.k}" ${isOn(c,p.k)?"checked":""} aria-label="${esc(c.name)} — ${p.name}"></td>`).join("")}
     ${PW.map(p => `<td><input type="number" min="0" id="a-t-${c.id}-${p.k}" data-c="${c.id}" data-k="tgt" data-p="${p.k}" value="${d.targets?.[c.id]?.[p.k] ?? ""}" aria-label="مستهدف ${esc(c.name)} — ${p.name}"></td>`).join("")}</tr>`).join("");
