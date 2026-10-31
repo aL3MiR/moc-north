@@ -486,7 +486,7 @@ S.cp.view = store.get("moc.cpv") === "table" ? "table" : "tiles";
 
 const EXT = !!window.MOC_EXTERNAL;
 const REC = !!window.MOCREC;
-S.pos = {}; S.pl = { rows:null, loading:false }; S.pf = { center:"", status:"open" };
+S.pos = {}; S.pl = { rows:null, loading:false }; S.pf = { center:"", status:"all" };
 S.cnt = {}; S.cntDays = new Set(); S.cntDay = new Map(); S.role = ""; S.rl = { key:"", rows:null, loading:false }; S.al = { k:"", rows:null, loading:false }; S.af = { center:"", status:"pending" };
 const AUD = { match:"مطابق", age:"غير مطابق للفئة العمرية", diag:"غير مطابق — مشخّص مسبقاً", recent:"غير مطابق — عمل فحصاً في أقل من سنة" };
 const canRead = cid => S.role === "owner" || S.role === "moc_auditor" || (S.role === "moc_manager" && S.myCenter === cid);
@@ -855,7 +855,7 @@ function renderRecEntry(p, box, list, force){
     else if (!rows.length) h += `<p class="muted">لا توجد سجلات لهذا اليوم.</p>`;
     else h += `<div class="scroll" style="margin-top:8px"><table style="min-width:${p.rec ? 460 : 780}px"><thead><tr><th>م</th><th>السجل المدني</th>${p.mammo ? "<th>الجوال</th><th>موعد</th><th>منصة المسار</th><th>رقيم</th><th>الحالة</th>" : "<th>التدقيق</th>"}<th></th></tr></thead><tbody>${rows.map((r, i) => {
       const editable = w && (p.mammo || !r.audit);
-      const del = editable ? `<button type="button" class="btn del" data-del="${esc(r.id)}">حذف</button>` : "";
+      const del = (editable || isSectorTeam()) ? `<button type="button" class="btn del" data-del="${esc(r.id)}">حذف</button>` : "";
       if (p.rec) return `<tr><td>${i+1}</td><td class="nid">${esc(r.nid)}</td><td>${r.audit ? `<span class="pill ${r.audit === "match" ? "g" : "r"}" title="${esc(r.audit_name || "")}">${AUD[r.audit] || r.audit}</span>` : `<span class="pill w">بانتظار التدقيق</span>`}</td><td>${del}</td></tr>`;
       const sel = f => w ? `<select class="yn ${r[f] === true ? "y" : r[f] === false ? "n" : ""}" data-yn="${f}" data-id="${esc(r.id)}" aria-label="${f}"><option value="1" ${r[f] === true ? "selected" : ""}>نعم</option><option value="0" ${r[f] === false ? "selected" : ""}>لا</option></select>` : yn(r[f]);
       const done = r.mawid && r.platform && r.raqeem;
@@ -936,8 +936,8 @@ async function delRec(b, p){
   if (b.dataset.confirm !== "1") { b.dataset.confirm = "1"; b.textContent = "تأكيد الحذف"; setTimeout(() => { if (b.isConnected) { b.dataset.confirm = ""; b.textContent = "حذف"; } }, 4000); return; }
   b.disabled = true;
   try { await window.MOCREC.remove(b.dataset.del); toast("تم حذف السجل."); }
-  catch (err) { toast(DENIED(err) ? "لا يمكن حذف سجل تم تدقيقه." : "تعذّر الحذف."); }
-  await loadDay(p, true);
+  catch (err) { toast(DENIED(err) ? "لا يمكن حذف سجل تم تدقيقه. اطلب من فريق القطاع حذفه." : "تعذّر الحذف."); }
+  await loadDay(p, true); if (S.al.k === p.k) loadAudit(p, true);
 }
 async function loadAudit(p, force){
   if (!force && S.al.k === p.k && (S.al.rows || S.al.loading)) return;
@@ -968,16 +968,23 @@ function renderAudit(p, force){
     let f = rows.filter(r => (!S.af.center || r.center === S.af.center) && (S.af.status === "all" || (S.af.status === "pending" ? !r.audit : S.af.status === "match" ? r.audit === "match" : (r.audit && r.audit !== "match"))));
     const total = f.length; f = f.slice(0, 300);
     h += `<div class="rsum"><span>المعروض: ${n(total)}</span><span>بانتظار التدقيق في كل المراكز: ${n(rows.filter(r => !r.audit).length)}</span></div>`;
-    h += !f.length ? `<p class="muted">لا توجد سجلات بهذه الحالة.</p>` : `<div class="scroll"><table style="min-width:780px"><thead><tr><th>المركز</th><th>التاريخ</th><th>السجل المدني</th><th>ملاحظة</th><th>التدقيق</th><th>المدقق</th></tr></thead><tbody>${f.map(r => {
+    h += !f.length ? `<p class="muted">لا توجد سجلات بهذه الحالة.</p>` : `<div class="scroll"><table style="min-width:780px"><thead><tr><th>المركز</th><th>التاريخ</th><th>السجل المدني</th><th>ملاحظة</th><th>التدقيق</th><th>المدقق</th><th></th></tr></thead><tbody>${f.map(r => {
       const pr = prior(r);
       return `<tr><td class="l">${esc(centerById(r.center)?.name || r.center)}</td><td><span class="num">${esc(r.day)}</span></td><td class="nid">${esc(r.nid)}</td>
         <td>${pr ? `<span class="pill w">مكرر: سبق فحصه ${esc(pr.day)}${pr.center !== r.center ? " — " + esc(centerById(pr.center)?.name || pr.center) : ""}</span>` : ""}</td>
-        <td><select class="audsel ${r.audit === "match" ? "match" : r.audit ? "bad" : ""}" data-aud="${esc(r.id)}" aria-label="تدقيق السجل ${esc(r.nid)}"><option value="">بانتظار التدقيق</option>${Object.entries(AUD).map(([v,l]) => `<option value="${v}" ${r.audit === v ? "selected" : ""}>${l}</option>`).join("")}</select></td><td class="m">${esc(r.audit_name || "")}</td></tr>`; }).join("")}</tbody></table></div>${total > 300 ? `<p class="recnote">يظهر أول ٣٠٠ سجل. اختر مركزاً لعرض باقي السجلات.</p>` : ""}`;
+        <td><select class="audsel ${r.audit === "match" ? "match" : r.audit ? "bad" : ""}" data-aud="${esc(r.id)}" aria-label="تدقيق السجل ${esc(r.nid)}"><option value="">بانتظار التدقيق</option>${Object.entries(AUD).map(([v,l]) => `<option value="${v}" ${r.audit === v ? "selected" : ""}>${l}</option>`).join("")}</select></td><td class="m">${esc(r.audit_name || "")}</td><td><button type="button" class="btn del" data-adel="${esc(r.id)}" aria-label="حذف السجل ${esc(r.nid)}">حذف</button></td></tr>`; }).join("")}</tbody></table></div>${total > 300 ? `<p class="recnote">يظهر أول ٣٠٠ سجل. اختر مركزاً لعرض باقي السجلات.</p>` : ""}`;
   }
   box.innerHTML = h;
   $("au-center").addEventListener("change", e => { S.af.center = e.target.value; renderAudit(p, false); });
   $("au-status").addEventListener("change", e => { S.af.status = e.target.value; renderAudit(p, false); });
   $("au-reload").addEventListener("click", () => loadAudit(p, true));
+  box.querySelectorAll("[data-adel]").forEach(b => b.addEventListener("click", async () => {
+    if (b.dataset.confirm !== "1") { b.dataset.confirm = "1"; b.textContent = "تأكيد الحذف"; setTimeout(() => { if (b.isConnected) { b.dataset.confirm = ""; b.textContent = "حذف"; } }, 4000); return; }
+    b.disabled = true;
+    try { await window.MOCREC.remove(b.dataset.adel); S.al.rows = (S.al.rows || []).filter(x => x.id !== b.dataset.adel); toast("تم حذف السجل."); }
+    catch (err) { toast(DENIED(err) ? "لا تملك صلاحية حذف هذا السجل." : "تعذّر الحذف."); }
+    renderAudit(p, false); if (S.rl.key.startsWith(p.k + "|")) loadDay(p, true);
+  }));
   box.querySelectorAll("select[data-aud]").forEach(s => s.addEventListener("change", async () => {
     const v = s.value || null; s.disabled = true;
     try { const r = await window.MOCREC.update(s.dataset.aud, { audit:v }); const row = S.al.rows?.find(x => x.id === r.id); if (row) Object.assign(row, r); toast(v ? `تم التدقيق: ${AUD[v]}` : "أُعيد السجل إلى «بانتظار التدقيق»"); }
@@ -1084,15 +1091,16 @@ function renderPos(force, bg){
       ${MODE === "salama" || S.role === "moc_manager" ? "" : `<div class="field"><label for="pf-center">المركز</label><select class="in" id="pf-center"><option value="">جميع المراكز</option>${centers().filter(c => isOn(c, "col")).map(c => `<option value="${esc(c.id)}" ${S.pf.center === c.id ? "selected" : ""}>${esc(c.name)}</option>`).join("")}</select></div>`}
       <div class="field"><label for="pf-status">الحالة</label><select class="in" id="pf-status">${[["open","قيد المتابعة"],["done","أتمّت المسار"],["all","الكل"]].map(([v,l]) => `<option value="${v}" ${S.pf.status === v ? "selected" : ""}>${l}</option>`).join("")}</select></div>
     </div>${due ? `<div class="rsum"><span style="background:var(--bad-bg);color:var(--bad)">حلّ موعد إعادة التواصل لـ ${n(due)} حالة</span></div>` : ""}`;
-    h += !list.length ? `<p class="muted">لا توجد حالات بهذه الحالة.</p>` : `<div class="scroll"><table style="min-width:760px"><thead><tr><th>المركز</th><th>تاريخ النتيجة</th><th>السجل المدني</th><th>الجوال</th><th>الحالة</th><th>منصة المسار</th><th></th></tr></thead><tbody>${list.map(r => {
+    h += !list.length ? `<p class="muted">لا توجد حالات بهذه الحالة.</p>` : `<div class="scroll"><table style="min-width:760px"><thead><tr><th>المركز</th><th>تاريخ النتيجة</th><th>السجل المدني</th><th>الجوال</th><th>الحالة</th><th>منصة المسار</th><th></th>${isSectorTeam() ? "<th></th>" : ""}</tr></thead><tbody>${list.map(r => {
       const [k, l] = posStatus(r);
-      return `<tr><td class="l">${esc(centerById(r.center)?.name || r.center)}</td><td><span class="num">${esc(r.result_date)}</span></td><td class="nid">${esc(r.nid)}</td><td class="nid">${esc(r.phone || "")}</td><td><span class="pill ${k}">${l}</span></td><td>${r.platform ? "✓" : "—"}</td><td><button type="button" class="btn ghost sm" data-popen="${esc(r.id)}">${S.pe.openPos === r.id ? "إخفاء" : isSectorTeam() ? "متابعة" : "عرض"}</button></td></tr>
-        ${S.pe.openPos === r.id ? `<tr><td colspan="7" style="white-space:normal;background:var(--surface)">${posCaseForm(r)}</td></tr>` : ""}`; }).join("")}</tbody></table></div>`;
+      return `<tr><td class="l">${esc(centerById(r.center)?.name || r.center)}</td><td><span class="num">${esc(r.result_date)}</span></td><td class="nid">${esc(r.nid)}</td><td class="nid">${esc(r.phone || "")}</td><td><span class="pill ${k}">${l}</span></td><td>${r.platform ? "✓" : "—"}</td><td><button type="button" class="btn ghost sm" data-popen="${esc(r.id)}">${S.pe.openPos === r.id ? "إخفاء" : isSectorTeam() ? "متابعة" : "عرض"}</button></td>${isSectorTeam() ? `<td><button type="button" class="btn del" data-pdel="${esc(r.id)}" aria-label="حذف الحالة ${esc(r.nid)}">حذف</button></td>` : ""}</tr>
+        ${S.pe.openPos === r.id ? `<tr><td colspan="${isSectorTeam() ? 8 : 7}" style="white-space:normal;background:var(--surface)">${posCaseForm(r)}</td></tr>` : ""}`; }).join("")}</tbody></table></div>`;
   }
   box.innerHTML = h;
   $("ps-add")?.addEventListener("submit", addPos);
   $("pf-center")?.addEventListener("change", e => { S.pf.center = e.target.value; renderPos(false); });
   $("pf-status")?.addEventListener("change", e => { S.pf.status = e.target.value; renderPos(false); });
+  box.querySelectorAll("[data-pdel]").forEach(b => b.addEventListener("click", () => delPos(b, b.dataset.pdel)));
   box.querySelectorAll("[data-popen]").forEach(b => b.addEventListener("click", () => { S.pe.openPos = S.pe.openPos === b.dataset.popen ? null : b.dataset.popen; renderPos(false); }));
   const pf = box.querySelector(".posform");
   if (pf){
@@ -1133,7 +1141,7 @@ async function addPos(e){
   catch (err) { msg.className = "msg bad"; msg.textContent = DENIED(err) ? "إضافة الحالات متاحة لفريق القطاع فقط." : "تعذّر الحفظ. حاول مرة أخرى."; }
 }
 async function delPos(b, id){
-  if (b.dataset.confirm !== "1") { b.dataset.confirm = "1"; b.textContent = "تأكيد الحذف"; setTimeout(() => { if (b.isConnected) { b.dataset.confirm = ""; b.textContent = "حذف الحالة"; } }, 4000); return; }
+  if (b.dataset.confirm !== "1") { b.dataset.confirm = "1"; b.textContent = "تأكيد الحذف"; setTimeout(() => { if (b.isConnected) { b.dataset.confirm = ""; b.textContent = b.dataset.pdel ? "حذف" : "حذف الحالة"; } }, 4000); return; }
   try { await window.MOCPOS.remove(id); S.pl.rows = S.pl.rows.filter(r => r.id !== id); S.pe.openPos = null; toast("تم حذف الحالة."); renderPos(false); }
   catch (err) { toast("تعذّر حذف الحالة."); }
 }

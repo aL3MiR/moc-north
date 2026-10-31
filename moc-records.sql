@@ -49,10 +49,10 @@ create policy moc_rec_upd on public.moc_records for update to authenticated
      or (public.moc_role() = 'moc_manager' and center = public.moc_center() and audit is null))
   with check (public.moc_role() in ('owner','moc_auditor')
      or (public.moc_role() = 'moc_manager' and center = public.moc_center()));
--- الحذف: المشرف، ومدير المركز لسجلات مركزه التي لم تُدقق بعد
+-- الحذف: المشرف وفريق التدقيق لأي سجل، ومدير المركز لسجلات مركزه التي لم تُدقق بعد
 drop policy if exists moc_rec_del on public.moc_records;
 create policy moc_rec_del on public.moc_records for delete to authenticated
-  using (public.moc_role() = 'owner'
+  using (public.moc_role() in ('owner','moc_auditor')
      or (public.moc_role() = 'moc_manager' and center = public.moc_center() and audit is null));
 
 -- التدقيق لا يُعدّله إلا فريق التدقيق أو المشرف، ويُسجَّل من دقق ومتى
