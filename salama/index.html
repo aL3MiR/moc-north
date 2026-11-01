@@ -552,7 +552,7 @@ const NOWRITE = () => S.role === "moc_auditor" ? "حساب فريق التدقي
 const DENIED = err => err?.code === "invalid_argument" || err?.code === 401 || err?.code === 403;
 const SYNC_NOTE = EXT ? "البيانات مشتركة مع منصة القطاع الشمالي ومحدّثة باستمرار." : "متوسط القطاع وترتيب المركز يُحدَّثان تلقائياً من منصة القطاع الشمالي عدة مرات يومياً.";
 function computeSummary(){
-  const evs = centers().map(evalCenter), tot = sectorTotals(evs);
+  const evs = centers().map(c => evalCenter(c)), tot = sectorTotals(evs);
   const scored = evs.filter(e => e.overall != null).sort((a,b) => b.overall - a.overall);
   const rank = scored.findIndex(e => e.c.id === S.cfg.salama.id) + 1;
   return { asOf:new Date().toISOString(), rank: rank || null, of: scored.length, pw: Object.fromEntries(PW.map(p => [p.k, tot[p.k].pct])) };
@@ -589,7 +589,8 @@ function sumEntries(cid, M = CUR){
   for (const key of S.cntDays) { const [cc, dd] = key.split("|"); if (cc === cid) days.add(dd); }
   return { sums: out, mon, days };
 }
-function evalCenter(c, M = CUR){
+function evalCenter(c, M){
+  if (typeof M !== "string") M = CUR; // يُستدعى أيضاً عبر map فيصل رقم الترتيب بدل الشهر
   const base = S.cfg.baseline?.[c.id] || {};
   const { sums, mon, days } = sumEntries(c.id, M);
   const res = { c, days, pw:{} };
@@ -723,7 +724,7 @@ function render(){
   if (!S.cfg) return;
   if (MODE === "salama" && EXT) S.summary = computeSummary();
   renderHeader();
-  const evs = centers().map(evalCenter);
+  const evs = centers().map(c => evalCenter(c));
   const sorted = [...evs].sort((a,b) => (b.overall ?? -1) - (a.overall ?? -1));
   const tot = sectorTotals(evs);
   let h = "";
@@ -1300,7 +1301,7 @@ function showCp(){ $("cpage").hidden = false; document.body.style.overflow = "hi
 function closeCp(){ S.cp.open = false; S.cp.center = null; S.dirty = false; $("cpage").hidden = true; document.body.style.overflow = ""; cpFocus?.focus?.(); cpFocus = null; }
 function refreshCenters(force){
   if (!S.cfg || !S.cp.open) return;
-  const evs = centers().map(evalCenter), tot = sectorTotals(evs);
+  const evs = centers().map(c => evalCenter(c)), tot = sectorTotals(evs);
   const sorted = [...evs].sort((a,b) => (b.overall ?? -1) - (a.overall ?? -1));
   if (!S.cp.center){
     $("cp-bar").innerHTML = `<button type="button" class="btn ghost sm" data-cp="close">→ رجوع للصفحة الرئيسية</button>`;
