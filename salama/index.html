@@ -910,6 +910,16 @@ function registerTable(evs, tot, highlight){
 }
 
 /* ---- main render ---- */
+/* Salama portal (salama.jazan-north.workers.dev) embeds this page hidden and reads the center's summary from this message — numbers only, no personal data */
+function postHub(evs){
+  try {
+    const me = evs.find(e => e.c.id === S.cfg.salama.id); if (!me || !REC) return;
+    const pw = {}; for (const p of PW) { const x = me.pw[p.k]; pw[p.k] = x.on ? { pct:x.pct, ach:x.ach, t:x.t } : null; }
+    const pending = ["dm","lip","bp"].reduce((s, k) => s + (me.pw[k]?.on ? me.pw[k].pending || 0 : 0), 0);
+    window.parent.postMessage({ src:"moc-salama", v:1, overall:me.overall, rank:S.summary?.rank ?? null, of:S.summary?.of ?? null, pw, pos:me.posPct, pending, month:CUR,
+      manager:me.c.manager || "", managerEn:me.c.managerEn || "", director:S.cfg.director || "", directorEn:S.cfg.directorEn || "" }, "*");
+  } catch {}
+}
 function render(){
   if (!S.cfg) return;
   if (MODE === "salama" && EXT) S.summary = computeSummary();
@@ -917,6 +927,7 @@ function render(){
   const evs = centers().map(c => evalCenter(c));
   const sorted = [...evs].sort((a,b) => (b.overall ?? -1) - (a.overall ?? -1));
   const tot = sectorTotals(evs);
+  if (MODE === "salama" && window.parent !== window) postHub(evs);
   let h = "";
   if (MODE === "salama"){
     const me = evs.find(e => e.c.id === S.cfg.salama.id);
