@@ -148,7 +148,7 @@ html.m .aw{flex-wrap:wrap;gap:10px}html.m .aw .tx b{font-size:18px}html.m .aw .t
       <figure><a href="award-ceremony.jpg" target="_blank" rel="noopener"><img src="award-ceremony.jpg" alt="تكريم المركز على المنصة بالمركز الأول" loading="lazy" style="object-position:center 20%"></a><figcaption data-t="awc2">لحظة التكريم</figcaption></figure>
       <figure class="tall"><a href="award-cluster.jpg" target="_blank" rel="noopener"><img src="award-cluster.jpg" alt="إعلان تجمع جازان الصحي بتكريم مركز صحي السلامة بالمركز الأول" loading="lazy"></a><figcaption data-t="awc3">إعلان تجمع جازان الصحي</figcaption></figure>
     </div>
-    <blockquote class="awq"><span data-t="awq">تتقدم هيئة الصحة العامة بتهنئة مركز صحي السلامة بمنطقة جازان، لتميّزهم على مستوى المملكة في منافسة مناطق الرصد المخفري المتميزة لعام ٢٠٢٥، ولمساهمتهم الفعّالة في برنامج الرصد المخفري للأمراض التنفسية، مما كان له أثر كبير في نجاح البرنامج. متمنين لهم دوام التميز والنجاح.</span><cite data-t="awcite">— نص درع التهنئة، هيئة الصحة العامة (وقاية)</cite></blockquote>
+    <blockquote class="awq"><span data-t="awq">تتقدم هيئة الصحة العامة بتهنئة مركز صحي السلامة بمنطقة جازان، لتميّزهم على مستوى المملكة في منافسة مناطق الرصد المخفري المتميزة لعام ٢٠٢٥، ولمساهمتهم الفعّالة في برنامج الرصد المخفري للأمراض التنفسية، مما كان له أثر كبير في نجاح البرنامج. متمنين لهم دوام التميز والنجاح.</span></blockquote>
   </div>
 </dialog>
 <iframe class="hid" src="https://moc-north.jazan-north.workers.dev/salama/?embed=hub" title="" aria-hidden="true" tabindex="-1"></iframe>
@@ -173,8 +173,7 @@ const T = {
   awt:"1st place in the Kingdom", aws:"Outstanding Sentinel Surveillance Regions Competition 2025", awo:"Public Health Authority (Weqaya)", awmore:"View award",
   awdt:"1st place in the Kingdom 2025", awm1:"Respiratory Diseases Sentinel Surveillance Program", awm2:"Public Health Authority (Weqaya)", awm3:"2025",
   awc1:"Congratulations plaque", awc2:"The award ceremony", awc3:"Jazan Health Cluster announcement",
-  awq:"The Public Health Authority congratulates Al-Salama Health Center, Jazan Region, on its excellence at the Kingdom level in the Outstanding Sentinel Surveillance Regions Competition 2025, and on its effective contribution to the Respiratory Diseases Sentinel Surveillance Program, which had a great impact on the program's success. Wishing them continued excellence and success.",
-  awcite:"— Text of the congratulations plaque, Public Health Authority (Weqaya)"
+  awq:"The Public Health Authority congratulates Al-Salama Health Center, Jazan Region, on its excellence at the Kingdom level in the Outstanding Sentinel Surveillance Regions Competition 2025, and on its effective contribution to the Respiratory Diseases Sentinel Surveillance Program, which had a great impact on the program's success. Wishing them continued excellence and success."
 };
 if (EN) { document.title = "Al-Salama Al-Ulya Center"; document.querySelectorAll("[data-t]").forEach(el => { const v = T[el.dataset.t]; if (v) el.innerHTML = v; }); }
 const L = (ar, en) => EN ? en : ar;
