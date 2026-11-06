@@ -95,8 +95,8 @@ dialog.awd::backdrop{background:rgba(8,20,32,.6);backdrop-filter:blur(3px)}
 .awh{display:flex;align-items:center;gap:12px;padding:16px 18px;background:linear-gradient(135deg,#0F2C46,#14808A);color:#fff;position:sticky;top:0;z-index:1}
 .awh .med{width:40px;height:46px;flex:none}.awh b{flex:1;font-family:var(--f-display);font-size:22px;line-height:1.3}.awh button{border:0;background:rgba(255,255,255,.18);color:#fff;width:36px;height:36px;border-radius:50%;font-size:20px;line-height:1;flex:none}
 .awb{padding:16px 18px 20px;display:grid;gap:14px}
-.awf{display:grid;grid-template-columns:1fr 1.2fr;gap:12px}
-.awf figure{margin:0;background:var(--soft);border-radius:12px;overflow:hidden}.awf a{display:block}.awf img{display:block;width:100%;height:340px;object-fit:cover}.awf figcaption{font-size:12.5px;color:var(--muted);padding:6px 10px;text-align:center}
+.awf{display:grid;grid-template-columns:1fr 1.25fr 1fr;gap:12px}.awf .tall img{object-fit:contain;background:#1B6A9E}
+.awf figure{margin:0;background:var(--soft);border-radius:12px;overflow:hidden}.awf a{display:block}.awf img{display:block;width:100%;height:360px;object-fit:cover}.awf figcaption{font-size:12.5px;color:var(--muted);padding:6px 10px;text-align:center}
 .awq{margin:0;border-inline-start:4px solid var(--gold);background:var(--soft);border-radius:10px;padding:12px 14px;line-height:1.9;font-size:14.5px}
 .awq cite{display:block;font-style:normal;color:var(--muted);font-size:12.5px;margin-top:4px}
 .awm{display:flex;flex-wrap:wrap;gap:8px}.awm span{background:var(--soft);border-radius:999px;padding:3px 12px;font-size:13px;color:var(--navy);font-weight:600}
@@ -146,6 +146,7 @@ html.m .aw{flex-wrap:wrap;gap:10px}html.m .aw .tx b{font-size:18px}html.m .aw .t
     <div class="awf">
       <figure><a href="award-plaque.jpg" target="_blank" rel="noopener"><img src="award-plaque.jpg" alt="درع التهنئة من هيئة الصحة العامة" loading="lazy"></a><figcaption data-t="awc1">درع التهنئة</figcaption></figure>
       <figure><a href="award-ceremony.jpg" target="_blank" rel="noopener"><img src="award-ceremony.jpg" alt="تكريم المركز على المنصة بالمركز الأول" loading="lazy" style="object-position:center 20%"></a><figcaption data-t="awc2">لحظة التكريم</figcaption></figure>
+      <figure class="tall"><a href="award-cluster.jpg" target="_blank" rel="noopener"><img src="award-cluster.jpg" alt="إعلان تجمع جازان الصحي بتكريم مركز صحي السلامة بالمركز الأول" loading="lazy"></a><figcaption data-t="awc3">إعلان تجمع جازان الصحي</figcaption></figure>
     </div>
     <blockquote class="awq"><span data-t="awq">تتقدم هيئة الصحة العامة بتهنئة مركز صحي السلامة بمنطقة جازان، لتميّزهم على مستوى المملكة في منافسة مناطق الرصد المخفري المتميزة لعام ٢٠٢٥، ولمساهمتهم الفعّالة في برنامج الرصد المخفري للأمراض التنفسية، مما كان له أثر كبير في نجاح البرنامج. متمنين لهم دوام التميز والنجاح.</span><cite data-t="awcite">— نص درع التهنئة، هيئة الصحة العامة (وقاية)</cite></blockquote>
   </div>
@@ -171,7 +172,7 @@ const T = {
   credit:"Concept, preparation and design", cname:"Omair Manaji Aqeel",
   awt:"1st place in the Kingdom", aws:"Outstanding Sentinel Surveillance Regions Competition 2025", awo:"Public Health Authority (Weqaya)", awmore:"View award",
   awdt:"1st place in the Kingdom 2025", awm1:"Respiratory Diseases Sentinel Surveillance Program", awm2:"Public Health Authority (Weqaya)", awm3:"2025",
-  awc1:"Congratulations plaque", awc2:"The award ceremony",
+  awc1:"Congratulations plaque", awc2:"The award ceremony", awc3:"Jazan Health Cluster announcement",
   awq:"The Public Health Authority congratulates Al-Salama Health Center, Jazan Region, on its excellence at the Kingdom level in the Outstanding Sentinel Surveillance Regions Competition 2025, and on its effective contribution to the Respiratory Diseases Sentinel Surveillance Program, which had a great impact on the program's success. Wishing them continued excellence and success.",
   awcite:"— Text of the congratulations plaque, Public Health Authority (Weqaya)"
 };
@@ -179,7 +180,7 @@ if (EN) { document.title = "Al-Salama Al-Ulya Center"; document.querySelectorAll
 const L = (ar, en) => EN ? en : ar;
 (() => { const d = $("awd"), b = $("aw"); if (!d || !b) return;
   $("awx").setAttribute("aria-label", L("إغلاق", "Close"));
-  if (EN) d.querySelectorAll("img").forEach((im, i) => im.alt = ["Public Health Authority congratulations plaque", "The center receiving the first-place award on stage"][i]);
+  if (EN) d.querySelectorAll("img").forEach((im, i) => im.alt = ["Public Health Authority congratulations plaque", "The center receiving the first-place award on stage", "Jazan Health Cluster announcement of Al-Salama Health Center winning first place"][i]);
   b.onclick = () => { if (d.showModal) d.showModal(); else d.setAttribute("open", ""); };
   $("awx").onclick = () => d.close ? d.close() : d.removeAttribute("open");
   d.addEventListener("click", e => { if (e.target === d) d.close(); });
